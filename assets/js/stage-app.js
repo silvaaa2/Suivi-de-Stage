@@ -1,6 +1,13 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 
 import {
+  getAuth,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+import {
   getFirestore,
   collection,
   getDocs,
@@ -21,6 +28,7 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 const db = getFirestore(app);
 
 const STAGE_COLLECTION = "stageValidations";
@@ -36,7 +44,16 @@ const COMPANIES = [
   { id: "favelas", name: "Favelas Repair" }
 ];
 
+const loginSection = document.getElementById("loginSection");
+const dashboard = document.getElementById("dashboard");
+const loginForm = document.getElementById("loginForm");
+const loginError = document.getElementById("loginError");
+const loginBtn = document.getElementById("loginBtn");
+const loginBtnText = loginBtn.querySelector(".btn-text");
+
 const refreshBtn = document.getElementById("refreshBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+
 const companyGrid = document.getElementById("companyGrid");
 const examList = document.getElementById("examList");
 
@@ -57,6 +74,28 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
+}
+
+function setLoginLoading(isLoading) {
+  loginBtn.disabled = isLoading;
+  loginBtn.classList.toggle("loading", isLoading);
+  loginBtnText.textContent = isLoading ? "Connexion..." : "Connexion";
+}
+
+function showLogin() {
+  loginSection.hidden = false;
+  dashboard.hidden = true;
+  refreshBtn.hidden = true;
+  logoutBtn.hidden = true;
+
+  setLoginLoading(false);
+}
+
+function showDashboard() {
+  loginSection.hidden = true;
+  dashboard.hidden = false;
+  refreshBtn.hidden = false;
+  logoutBtn.hidden = false;
 }
 
 function buildStageDocId(companyId, normalizedIdUnique) {
@@ -178,7 +217,7 @@ function renderExamParticipants() {
     examList.innerHTML = `
       <div class="loading-box">
         Aucun participant d’examen trouvé dans Firebase.<br>
-        Normalement il faudra patcher le site examen pour sauvegarder idUnique + studentName.
+        Il faudra patcher le site examen pour sauvegarder idUnique + studentName.
       </div>
     `;
     return;
@@ -235,7 +274,7 @@ async function addStageValidation(companyId, idUnique) {
     companyId: company.id,
     companyName: company.name,
     status: "approved",
-    addedBy: "site-stage",
+    addedBy: auth.currentUser?.email || "compte stage",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { merge: true });
@@ -298,24 +337,67 @@ async function refreshAll() {
   renderExamParticipants();
 }
 
+loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  loginError.textContent = "";
+  setLoginLoading(true);
+
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    console.error("Erreur connexion :", error);
+
+    if (error.code === "auth/invalid-credential") {
+      loginError.textContent = "Email ou mot de passe incorrect.";
+    } else if (error.code === "auth/too-many-requests") {
+      loginError.textContent = "Trop de tentatives. Réessaie plus tard.";
+    } else if (error.code === "auth/network-request-failed") {
+      loginError.textContent = "Erreur réseau.";
+    } else {
+      loginError.textContent = "Erreur de connexion.";
+    }
+
+    setLoginLoading(false);
+  }
+});
+
+logoutBtn.addEventListener("click", async () => {
+  await signOut(auth);
+});
+
 refreshBtn.addEventListener("click", async () => {
   await refreshAll();
 });
 
-refreshAll().catch(error => {
-  console.error("Erreur chargement dashboard stage :", error);
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    showLogin();
+    return;
+  }
 
-  companyGrid.innerHTML = `
-    <div class="loading-box">
-      Erreur de chargement des stages.<br>
-      Vérifie les règles Firestore.
-    </div>
-  `;
+  showDashboard();
 
-  examList.innerHTML = `
-    <div class="loading-box">
-      Erreur de chargement des examens.<br>
-      Vérifie les règles Firestore.
-    </div>
-  `;
+  try {
+    await refreshAll();
+  } catch (error) {
+    console.error("Erreur chargement dashboard stage :", error);
+
+    companyGrid.innerHTML = `
+      <div class="loading-box">
+        Erreur de chargement des stages.<br>
+        Vérifie les règles Firestore.
+      </div>
+    `;
+
+    examList.innerHTML = `
+      <div class="loading-box">
+        Erreur de chargement des examens.<br>
+        Vérifie les règles Firestore.
+      </div>
+    `;
+  }
 });
