@@ -349,16 +349,24 @@ loginForm.addEventListener("submit", async event => {
   try {
     await signInWithEmailAndPassword(auth, email, password);
   } catch (error) {
-    console.error("Erreur connexion :", error);
+    console.error("Erreur connexion Firebase :", error.code, error.message);
 
     if (error.code === "auth/invalid-credential") {
       loginError.textContent = "Email ou mot de passe incorrect.";
-    } else if (error.code === "auth/too-many-requests") {
-      loginError.textContent = "Trop de tentatives. Réessaie plus tard.";
+    } else if (error.code === "auth/wrong-password") {
+      loginError.textContent = "Mot de passe incorrect.";
+    } else if (error.code === "auth/user-not-found") {
+      loginError.textContent = "Compte introuvable.";
+    } else if (error.code === "auth/invalid-email") {
+      loginError.textContent = "Adresse e-mail invalide.";
+    } else if (error.code === "auth/unauthorized-domain") {
+      loginError.textContent = "Domaine Vercel non autorisé dans Firebase.";
+    } else if (error.code === "auth/operation-not-allowed") {
+      loginError.textContent = "Connexion email/mot de passe désactivée dans Firebase.";
     } else if (error.code === "auth/network-request-failed") {
       loginError.textContent = "Erreur réseau.";
     } else {
-      loginError.textContent = "Erreur de connexion.";
+      loginError.textContent = `Erreur : ${error.code}`;
     }
 
     setLoginLoading(false);
