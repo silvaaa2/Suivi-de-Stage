@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Suivi de Stage - Module 4</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <link rel="stylesheet" href="assets/css/stage.css?v=1000">
+</head>
+
+<body>
+
+<header class="stage-header">
+  <div class="brand">
+    <div class="brand-logo">M4</div>
+    <div>
+      <strong>Module 4 - Mécanique</strong>
+      <span>Suivi de stage</span>
+    </div>
+  </div>
+
+  <button id="logoutBtn" class="header-btn" hidden>Déconnexion</button>
+</header>
+
+<main>
+
+  <section id="loginSection" class="login-page">
+    <div class="login-card">
+      <p class="kicker">Accès sécurisé</p>
+      <h1>Suivi de stage</h1>
+      <p class="intro">
+        Connectez-vous pour gérer les stagiaires garage et suivre les participants aux examens.
+      </p>
+
+      <form id="loginForm">
+        <label for="email">Adresse e-mail</label>
+        <input id="email" type="email" autocomplete="email" required>
+
+        <label for="password">Mot de passe</label>
+        <input id="password" type="password" autocomplete="current-password" required>
+
+        <button id="loginBtn" type="submit" class="main-btn">
+          <span class="btn-spinner"></span>
+          <span class="btn-text">Connexion</span>
+        </button>
+      </form>
+
+      <p id="loginError" class="login-error"></p>
+    </div>
+  </section>
+
+  <section id="dashboard" class="dashboard" hidden>
+    <div class="dashboard-top">
+      <div>
+        <p class="kicker">Gestion des stages</p>
+        <h1>Stagiaire Garage</h1>
+        <p class="intro">
+          Ajoutez les ID Unique par entreprise. Les examens pourront ensuite récupérer ces validations automatiquement.
+        </p>
+      </div>
+
+      <button id="refreshBtn" class="secondary-btn">Actualiser</button>
+    </div>
+
+    <div class="stage-layout">
+
+      <section class="stage-card stage-companies-card">
+        <div class="card-head">
+          <div>
+            <p class="kicker">Entreprises</p>
+            <h2>Validation des ID Unique</h2>
+          </div>
+        </div>
+
+        <div id="companyGrid" class="company-grid"></div>
+      </section>
+
+      <section class="stage-card stage-exams-card">
+        <div class="card-head">
+          <div>
+            <p class="kicker">Examens</p>
+            <h2>Participants</h2>
+            <p>
+              Cette liste vient de Firebase. Elle affichera les résultats corrigés sur ton site examen.
+            </p>
+          </div>
+        </div>
+
+        <div id="examList" class="exam-list">
+          <div class="loading-box">
+            Chargement des participants...
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </section>
+
+</main>
+
+<script type="module" src="assets/js/stage-app.js?v=1000"></script>
+
+</body>
+</html>
