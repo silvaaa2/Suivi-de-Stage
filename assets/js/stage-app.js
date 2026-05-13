@@ -281,31 +281,43 @@ async function addStageValidation(companyId, idUnique) {
 }
 
 async function deleteStageValidation(docId) {
-  if (!confirm("Supprimer cet ID de stage ?")) return;
+  if (!docId) {
+    alert("ID Firebase introuvable, impossible de supprimer.");
+    return;
+  }
+
+  const confirmed = confirm("Supprimer cet ID de stage ?");
+  if (!confirmed) return;
 
   await deleteDoc(doc(db, STAGE_COLLECTION, docId));
 }
 
-function bindCompanyForms() {
-  document.querySelectorAll("[data-company-form]").forEach(form => {
-    form.addEventListener("submit", async event => {
+function bindDeleteButtons() {
+  document.querySelectorAll("[data-delete-stage]").forEach(button => {
+    button.onclick = async (event) => {
       event.preventDefault();
+      event.stopPropagation();
 
-      const companyId = form.dataset.companyId;
-      const input = form.querySelector("input");
-      const idUnique = input.value.trim();
+      const docId = button.dataset.docId;
 
-      if (!idUnique) return;
+      if (!docId) {
+        alert("Document Firebase introuvable.");
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = "...";
 
       try {
-        await addStageValidation(companyId, idUnique);
-        input.value = "";
+        await deleteStageValidation(docId);
         await refreshAll();
       } catch (error) {
-        console.error("Erreur ajout ID stage :", error);
-        alert("Impossible d’ajouter cet ID. Vérifie les règles Firebase.");
+        console.error("Erreur suppression ID stage :", error);
+        alert("Impossible de supprimer cet ID. Vérifie les règles Firestore.");
+        button.disabled = false;
+        button.textContent = "×";
       }
-    });
+    };
   });
 }
 
