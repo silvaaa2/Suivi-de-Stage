@@ -248,7 +248,6 @@ function renderCompanies() {
   }).join("");
 
   bindCompanyForms();
-  bindDeleteButtons();
 }
 
 function renderExamParticipants() {
@@ -299,86 +298,6 @@ function renderExamParticipants() {
       </div>
     `;
   }).join("");
-
-  bindExamParticipantDeleteButtons();
-}
-
-async function archiveExamParticipant(docId) {
-  console.log("archiveExamParticipant docId =", docId);
-  console.log("currentUserRole =", currentUserRole);
-  console.log("currentUser =", auth.currentUser?.email);
-
-  if (currentUserRole !== "prof") {
-    alert("Seul un compte professeur peut supprimer un participant.");
-    return false;
-  }
-
-  if (!docId) {
-    alert("Document participant introuvable.");
-    return false;
-  }
-
-  const ref = doc(db, EXAM_COLLECTION, docId);
-
-  await setDoc(ref, {
-    archived: true,
-    archivedBy: auth.currentUser?.email || "professeur inconnu",
-    archivedAt: serverTimestamp()
-  }, { merge: true });
-
-  return true;
-}
-
-function bindExamParticipantDeleteButtons() {
-  examList.onclick = async (event) => {
-    const button = event.target.closest("[data-delete-exam-participant]");
-
-    if (!button) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-
-    console.log("CLICK SUPPRESSION PARTICIPANT");
-
-    const docId = button.dataset.docId;
-    const studentName = button.dataset.studentName || "ce participant";
-
-    console.log("docId participant =", docId);
-    console.log("studentName =", studentName);
-
-    if (!docId) {
-      alert("Document participant introuvable.");
-      return;
-    }
-
-    if (!confirm(`Supprimer ${studentName} de la liste des participants ?`)) {
-      return;
-    }
-
-    const oldText = button.textContent;
-    button.disabled = true;
-    button.textContent = "...";
-
-    try {
-      const archived = await archiveExamParticipant(docId);
-
-      if (archived) {
-        alert("Participant supprimé/masqué ✅");
-        await refreshAll();
-      } else {
-        button.disabled = false;
-        button.textContent = oldText || "×";
-      }
-    } catch (error) {
-      console.error("Erreur suppression participant :", error);
-      alert(`Erreur suppression : ${error.code || error.message}`);
-
-      button.disabled = false;
-      button.textContent = oldText || "×";
-    }
-  };
 }
 
 async function addStageValidation(companyId, idUnique) {
@@ -431,6 +350,32 @@ async function deleteStageValidation(docId) {
   return true;
 }
 
+async function archiveExamParticipant(docId, studentName) {
+  if (currentUserRole !== "prof") {
+    alert("Seul un compte professeur peut supprimer un participant.");
+    return false;
+  }
+
+  if (!docId) {
+    alert("Document participant introuvable.");
+    return false;
+  }
+
+  if (!confirm(`Supprimer ${studentName || "ce participant"} de la liste des participants ?`)) {
+    return false;
+  }
+
+  const ref = doc(db, EXAM_COLLECTION, docId);
+
+  await setDoc(ref, {
+    archived: true,
+    archivedBy: auth.currentUser?.email || "professeur inconnu",
+    archivedAt: serverTimestamp()
+  }, { merge: true });
+
+  return true;
+}
+
 function bindCompanyForms() {
   document.querySelectorAll("[data-company-form]").forEach(form => {
     form.addEventListener("submit", async event => {
@@ -459,26 +404,26 @@ function bindCompanyForms() {
   });
 }
 
-function bindDeleteButtons() {
-  companyGrid.onclick = async (event) => {
-    const button = event.target.closest("[data-delete-stage]");
-    if (!button) return;
+document.addEventListener("click", async event => {
+  const stageDeleteButton = event.target.closest("[data-delete-stage]");
+  const examDeleteButton = event.target.closest("[data-delete-exam-participant]");
 
-    event.preventDefault();
-    event.stopPropagation();
+  if (!stageDeleteButton && !examDeleteButton) return;
 
-    const docId = button.dataset.docId;
+  event.preventDefault();
+  event.stopPropagation();
 
-    console.log("Suppression demandée :", docId);
+  if (stageDeleteButton) {
+    const docId = stageDeleteButton.dataset.docId;
 
     if (!docId) {
       alert("Document Firebase introuvable.");
       return;
     }
 
-    const oldText = button.textContent;
-    button.disabled = true;
-    button.textContent = "...";
+    const oldText = stageDeleteButton.textContent;
+    stageDeleteButton.disabled = true;
+    stageDeleteButton.textContent = "...";
 
     try {
       const deleted = await deleteStageValidation(docId);
@@ -486,18 +431,56 @@ function bindDeleteButtons() {
       if (deleted) {
         await refreshAll();
       } else {
-        button.disabled = false;
-        button.textContent = oldText || "×";
+        stageDeleteButton.disabled = false;
+        stageDeleteButton.textContent = oldText || "×";
       }
     } catch (error) {
       console.error("Erreur suppression ID stage :", error);
-      alert("Impossible de supprimer cet ID. Vérifie les règles Firestore.");
+      alert(`Erreur suppression ID stage : ${error.code || error.message}`);
 
-      button.disabled = false;
-      button.textContent = oldText || "×";
+      stageDeleteButton.disabled = false;
+      stageDeleteButton.textContent = oldText || "×";
     }
-  };
-}
+
+    return;
+  }
+
+  if (examDeleteButton) {
+    const docId = examDeleteButton.dataset.docId;
+    const studentName = examDeleteButton.dataset.studentName || "ce participant";
+
+    console.log("CLICK SUPPRESSION PARTICIPANT OK");
+    console.log("docId =", docId);
+    console.log("role =", currentUserRole);
+    console.log("user =", auth.currentUser?.email);
+
+    const oldText = examDeleteButton.textContent;
+    examDeleteButton.disabled = true;
+    examDeleteButton.textContent = "...";
+
+    try {
+      const archived = await archiveExamParticipant(docId, studentName);
+
+      if (archived) {
+        alert("Participant supprimé/masqué ✅");
+
+        const row = examDeleteButton.closest(".exam-row");
+        if (row) row.remove();
+
+        await refreshAll();
+      } else {
+        examDeleteButton.disabled = false;
+        examDeleteButton.textContent = oldText || "×";
+      }
+    } catch (error) {
+      console.error("Erreur suppression participant :", error);
+      alert(`Erreur suppression participant : ${error.code || error.message}`);
+
+      examDeleteButton.disabled = false;
+      examDeleteButton.textContent = oldText || "×";
+    }
+  }
+});
 
 async function refreshAll() {
   companyGrid.innerHTML = `<div class="loading-box">Chargement des stages...</div>`;
