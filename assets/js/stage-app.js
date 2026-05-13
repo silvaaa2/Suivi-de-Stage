@@ -283,18 +283,48 @@ async function addStageValidation(companyId, idUnique) {
 async function deleteStageValidation(docId) {
   if (!docId) {
     alert("ID Firebase introuvable, impossible de supprimer.");
-    return;
+    return false;
   }
 
-  const confirmed = confirm("Supprimer cet ID de stage ?");
-  if (!confirmed) return;
+  if (!confirm("Supprimer cet ID de stage ?")) {
+    return false;
+  }
 
   await deleteDoc(doc(db, STAGE_COLLECTION, docId));
+  return true;
+}
+
+function bindCompanyForms() {
+  document.querySelectorAll("[data-company-form]").forEach(form => {
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+
+      const companyId = form.dataset.companyId;
+      const input = form.querySelector("input");
+      const idUnique = input.value.trim();
+
+      if (!idUnique) return;
+
+      const submitBtn = form.querySelector("button");
+      submitBtn.disabled = true;
+
+      try {
+        await addStageValidation(companyId, idUnique);
+        input.value = "";
+        await refreshAll();
+      } catch (error) {
+        console.error("Erreur ajout ID stage :", error);
+        alert("Impossible d’ajouter cet ID. Vérifie les règles Firebase.");
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  });
 }
 
 function bindDeleteButtons() {
   document.querySelectorAll("[data-delete-stage]").forEach(button => {
-    button.onclick = async (event) => {
+    button.addEventListener("click", async event => {
       event.preventDefault();
       event.stopPropagation();
 
@@ -305,34 +335,25 @@ function bindDeleteButtons() {
         return;
       }
 
+      const oldText = button.textContent;
       button.disabled = true;
       button.textContent = "...";
 
       try {
-        await deleteStageValidation(docId);
-        await refreshAll();
+        const deleted = await deleteStageValidation(docId);
+
+        if (deleted) {
+          await refreshAll();
+        } else {
+          button.disabled = false;
+          button.textContent = oldText || "×";
+        }
       } catch (error) {
         console.error("Erreur suppression ID stage :", error);
         alert("Impossible de supprimer cet ID. Vérifie les règles Firestore.");
+
         button.disabled = false;
-        button.textContent = "×";
-      }
-    };
-  });
-}
-
-function bindDeleteButtons() {
-  document.querySelectorAll("[data-delete-stage]").forEach(button => {
-    button.addEventListener("click", async () => {
-      const docId = button.dataset.docId;
-      if (!docId) return;
-
-      try {
-        await deleteStageValidation(docId);
-        await refreshAll();
-      } catch (error) {
-        console.error("Erreur suppression ID stage :", error);
-        alert("Impossible de supprimer cet ID.");
+        button.textContent = oldText || "×";
       }
     });
   });
