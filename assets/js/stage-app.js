@@ -1,21 +1,12 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 
 import {
-  getAuth,
-  signInWithEmailAndPassword,
-  onAuthStateChanged,
-  signOut
-} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
-
-import {
   getFirestore,
   collection,
   getDocs,
   doc,
   setDoc,
   deleteDoc,
-  query,
-  where,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
@@ -30,7 +21,6 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
 const db = getFirestore(app);
 
 const STAGE_COLLECTION = "stageValidations";
@@ -46,15 +36,7 @@ const COMPANIES = [
   { id: "favelas", name: "Favelas Repair" }
 ];
 
-const loginSection = document.getElementById("loginSection");
-const dashboard = document.getElementById("dashboard");
-const loginForm = document.getElementById("loginForm");
-const loginError = document.getElementById("loginError");
-const loginBtn = document.getElementById("loginBtn");
-const loginBtnText = loginBtn.querySelector(".btn-text");
-const logoutBtn = document.getElementById("logoutBtn");
 const refreshBtn = document.getElementById("refreshBtn");
-
 const companyGrid = document.getElementById("companyGrid");
 const examList = document.getElementById("examList");
 
@@ -75,25 +57,6 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
-}
-
-function setLoginLoading(isLoading) {
-  loginBtn.disabled = isLoading;
-  loginBtn.classList.toggle("loading", isLoading);
-  loginBtnText.textContent = isLoading ? "Connexion..." : "Connexion";
-}
-
-function showLogin() {
-  loginSection.hidden = false;
-  dashboard.hidden = true;
-  logoutBtn.hidden = true;
-  setLoginLoading(false);
-}
-
-function showDashboard() {
-  loginSection.hidden = true;
-  dashboard.hidden = false;
-  logoutBtn.hidden = false;
 }
 
 function buildStageDocId(companyId, normalizedIdUnique) {
@@ -158,6 +121,17 @@ function getStageCompanyForId(normalizedIdUnique) {
   return found?.companyName || "";
 }
 
+function getStatusLabel(status) {
+  switch (status) {
+    case "approved":
+      return "Approuvé";
+    case "rejected":
+      return "Refusé";
+    default:
+      return "En attente";
+  }
+}
+
 function renderCompanies() {
   companyGrid.innerHTML = COMPANIES.map(company => {
     const entries = getStagesByCompany(company.id);
@@ -213,6 +187,7 @@ function renderExamParticipants() {
   examList.innerHTML = examParticipants.map(participant => {
     const hasStage = hasStageForId(participant.normalizedIdUnique);
     const companyName = getStageCompanyForId(participant.normalizedIdUnique);
+    const statusLabel = getStatusLabel(participant.status);
 
     return `
       <div class="exam-row ${hasStage ? "stage-ok" : ""}">
@@ -220,7 +195,7 @@ function renderExamParticipants() {
 
         <div class="exam-name">
           <b>${escapeHtml(participant.studentName)}</b>
-          <span>${escapeHtml(participant.totalScore)} / ${escapeHtml(participant.maxScore)} · ${escapeHtml(participant.status)}</span>
+          <span>${escapeHtml(participant.totalScore)} / ${escapeHtml(participant.maxScore)} · ${escapeHtml(statusLabel)}</span>
         </div>
 
         <span class="badge ${hasStage ? "ok" : "no"}">
@@ -242,6 +217,15 @@ async function addStageValidation(companyId, idUnique) {
     return;
   }
 
+  const alreadyExists = stageValidations.some(item => {
+    return item.companyId === companyId && item.normalizedIdUnique === normalizedIdUnique;
+  });
+
+  if (alreadyExists) {
+    alert("Cet ID est déjà enregistré dans cette entreprise.");
+    return;
+  }
+
   const docId = buildStageDocId(companyId, normalizedIdUnique);
   const ref = doc(db, STAGE_COLLECTION, docId);
 
@@ -251,7 +235,7 @@ async function addStageValidation(companyId, idUnique) {
     companyId: company.id,
     companyName: company.name,
     status: "approved",
-    addedBy: auth.currentUser?.email || "inconnu",
+    addedBy: "site-stage",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { merge: true });
@@ -314,53 +298,24 @@ async function refreshAll() {
   renderExamParticipants();
 }
 
-loginForm.addEventListener("submit", async event => {
-  event.preventDefault();
-
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value;
-
-  loginError.textContent = "";
-  setLoginLoading(true);
-
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-  } catch (error) {
-    console.error("Erreur connexion :", error);
-
-    if (error.code === "auth/invalid-credential") {
-      loginError.textContent = "Email ou mot de passe incorrect.";
-    } else if (error.code === "auth/too-many-requests") {
-      loginError.textContent = "Trop de tentatives. Réessaie plus tard.";
-    } else {
-      loginError.textContent = "Erreur de connexion.";
-    }
-
-    setLoginLoading(false);
-  }
-});
-
-logoutBtn.addEventListener("click", async () => {
-  await signOut(auth);
-});
-
 refreshBtn.addEventListener("click", async () => {
   await refreshAll();
 });
 
-onAuthStateChanged(auth, async user => {
-  if (!user) {
-    showLogin();
-    return;
-  }
+refreshAll().catch(error => {
+  console.error("Erreur chargement dashboard stage :", error);
 
-  showDashboard();
+  companyGrid.innerHTML = `
+    <div class="loading-box">
+      Erreur de chargement des stages.<br>
+      Vérifie les règles Firestore.
+    </div>
+  `;
 
-  try {
-    await refreshAll();
-  } catch (error) {
-    console.error("Erreur chargement dashboard stage :", error);
-    companyGrid.innerHTML = `<div class="loading-box">Erreur de chargement des stages.</div>`;
-    examList.innerHTML = `<div class="loading-box">Erreur de chargement des examens.</div>`;
-  }
+  examList.innerHTML = `
+    <div class="loading-box">
+      Erreur de chargement des examens.<br>
+      Vérifie les règles Firestore.
+    </div>
+  `;
 });
