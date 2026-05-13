@@ -1,0 +1,366 @@
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+
+import {
+  getFirestore,
+  collection,
+  getDocs,
+  doc,
+  setDoc,
+  deleteDoc,
+  query,
+  where,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDsEuRjht4ujClPreuT4btpSJKxXSP8I6c",
+  authDomain: "universit-4b11e.firebaseapp.com",
+  projectId: "universit-4b11e",
+  storageBucket: "universit-4b11e.firebasestorage.app",
+  messagingSenderId: "11363330953",
+  appId: "1:11363330953:web:b08d1b2de1f93a8e11cf58",
+  measurementId: "G-Z5B51BQCNL"
+};
+
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
+
+const STAGE_COLLECTION = "stageValidations";
+const EXAM_COLLECTION = "examAnswerStatuses";
+
+const COMPANIES = [
+  { id: "bennys", name: "Benny's" },
+  { id: "lsc", name: "LSC" },
+  { id: "paleto", name: "Paleto Garage" },
+  { id: "harmony", name: "Harmony Repair" },
+  { id: "cayo", name: "Cayo Garage" },
+  { id: "portolina", name: "Portolina Mechanic" },
+  { id: "favelas", name: "Favelas Repair" }
+];
+
+const loginSection = document.getElementById("loginSection");
+const dashboard = document.getElementById("dashboard");
+const loginForm = document.getElementById("loginForm");
+const loginError = document.getElementById("loginError");
+const loginBtn = document.getElementById("loginBtn");
+const loginBtnText = loginBtn.querySelector(".btn-text");
+const logoutBtn = document.getElementById("logoutBtn");
+const refreshBtn = document.getElementById("refreshBtn");
+
+const companyGrid = document.getElementById("companyGrid");
+const examList = document.getElementById("examList");
+
+let stageValidations = [];
+let examParticipants = [];
+
+function normalizeIdUnique(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function setLoginLoading(isLoading) {
+  loginBtn.disabled = isLoading;
+  loginBtn.classList.toggle("loading", isLoading);
+  loginBtnText.textContent = isLoading ? "Connexion..." : "Connexion";
+}
+
+function showLogin() {
+  loginSection.hidden = false;
+  dashboard.hidden = true;
+  logoutBtn.hidden = true;
+  setLoginLoading(false);
+}
+
+function showDashboard() {
+  loginSection.hidden = true;
+  dashboard.hidden = false;
+  logoutBtn.hidden = false;
+}
+
+function buildStageDocId(companyId, normalizedIdUnique) {
+  return `${companyId}__${normalizedIdUnique}`;
+}
+
+async function loadStageValidations() {
+  const snap = await getDocs(collection(db, STAGE_COLLECTION));
+
+  stageValidations = [];
+
+  snap.forEach(docSnap => {
+    stageValidations.push({
+      firebaseId: docSnap.id,
+      ...docSnap.data()
+    });
+  });
+}
+
+async function loadExamParticipants() {
+  const snap = await getDocs(collection(db, EXAM_COLLECTION));
+
+  examParticipants = [];
+
+  snap.forEach(docSnap => {
+    const data = docSnap.data();
+
+    const normalizedId =
+      data.normalizedIdUnique ||
+      normalizeIdUnique(data.idUnique || "");
+
+    if (!normalizedId) return;
+
+    examParticipants.push({
+      firebaseId: docSnap.id,
+      idUnique: data.idUnique || normalizedId,
+      normalizedIdUnique: normalizedId,
+      studentName: data.studentName || "Nom non renseigné",
+      totalScore: Number(data.totalScore || 0),
+      maxScore: Number(data.maxScore || 50),
+      status: data.status || "pending"
+    });
+  });
+
+  examParticipants.sort((a, b) => {
+    return String(a.studentName).localeCompare(String(b.studentName), "fr");
+  });
+}
+
+function getStagesByCompany(companyId) {
+  return stageValidations
+    .filter(item => item.companyId === companyId)
+    .sort((a, b) => String(a.idUnique).localeCompare(String(b.idUnique), "fr"));
+}
+
+function hasStageForId(normalizedIdUnique) {
+  return stageValidations.some(item => item.normalizedIdUnique === normalizedIdUnique);
+}
+
+function getStageCompanyForId(normalizedIdUnique) {
+  const found = stageValidations.find(item => item.normalizedIdUnique === normalizedIdUnique);
+  return found?.companyName || "";
+}
+
+function renderCompanies() {
+  companyGrid.innerHTML = COMPANIES.map(company => {
+    const entries = getStagesByCompany(company.id);
+
+    const rowsHtml = entries.length
+      ? entries.map(entry => `
+          <div class="stage-id-row">
+            <strong>${escapeHtml(entry.idUnique)}</strong>
+            <button
+              type="button"
+              data-delete-stage
+              data-doc-id="${escapeHtml(entry.firebaseId)}"
+              title="Supprimer"
+            >
+              ×
+            </button>
+          </div>
+        `).join("")
+      : `<div class="empty-row">Aucun ID enregistré.</div>`;
+
+    return `
+      <article class="company-column">
+        <div class="company-head">${escapeHtml(company.name)}</div>
+        <div class="company-subhead">ID Unique</div>
+
+        <form class="company-form" data-company-form data-company-id="${escapeHtml(company.id)}">
+          <input type="text" placeholder="Ex: 322644" inputmode="numeric" required>
+          <button type="submit">+</button>
+        </form>
+
+        <div class="stage-id-list">
+          ${rowsHtml}
+        </div>
+      </article>
+    `;
+  }).join("");
+
+  bindCompanyForms();
+  bindDeleteButtons();
+}
+
+function renderExamParticipants() {
+  if (!examParticipants.length) {
+    examList.innerHTML = `
+      <div class="loading-box">
+        Aucun participant d’examen trouvé dans Firebase.<br>
+        Normalement il faudra patcher le site examen pour sauvegarder idUnique + studentName.
+      </div>
+    `;
+    return;
+  }
+
+  examList.innerHTML = examParticipants.map(participant => {
+    const hasStage = hasStageForId(participant.normalizedIdUnique);
+    const companyName = getStageCompanyForId(participant.normalizedIdUnique);
+
+    return `
+      <div class="exam-row ${hasStage ? "stage-ok" : ""}">
+        <strong>${escapeHtml(participant.idUnique)}</strong>
+
+        <div class="exam-name">
+          <b>${escapeHtml(participant.studentName)}</b>
+          <span>${escapeHtml(participant.totalScore)} / ${escapeHtml(participant.maxScore)} · ${escapeHtml(participant.status)}</span>
+        </div>
+
+        <span class="badge ${hasStage ? "ok" : "no"}">
+          ${hasStage ? `✅ ${escapeHtml(companyName)}` : "Aucun stage"}
+        </span>
+      </div>
+    `;
+  }).join("");
+}
+
+async function addStageValidation(companyId, idUnique) {
+  const company = COMPANIES.find(item => item.id === companyId);
+  if (!company) return;
+
+  const normalizedIdUnique = normalizeIdUnique(idUnique);
+
+  if (!normalizedIdUnique) {
+    alert("ID Unique invalide.");
+    return;
+  }
+
+  const docId = buildStageDocId(companyId, normalizedIdUnique);
+  const ref = doc(db, STAGE_COLLECTION, docId);
+
+  await setDoc(ref, {
+    idUnique: String(idUnique).trim(),
+    normalizedIdUnique,
+    companyId: company.id,
+    companyName: company.name,
+    status: "approved",
+    addedBy: auth.currentUser?.email || "inconnu",
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
+async function deleteStageValidation(docId) {
+  if (!confirm("Supprimer cet ID de stage ?")) return;
+
+  await deleteDoc(doc(db, STAGE_COLLECTION, docId));
+}
+
+function bindCompanyForms() {
+  document.querySelectorAll("[data-company-form]").forEach(form => {
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+
+      const companyId = form.dataset.companyId;
+      const input = form.querySelector("input");
+      const idUnique = input.value.trim();
+
+      if (!idUnique) return;
+
+      try {
+        await addStageValidation(companyId, idUnique);
+        input.value = "";
+        await refreshAll();
+      } catch (error) {
+        console.error("Erreur ajout ID stage :", error);
+        alert("Impossible d’ajouter cet ID. Vérifie les règles Firebase.");
+      }
+    });
+  });
+}
+
+function bindDeleteButtons() {
+  document.querySelectorAll("[data-delete-stage]").forEach(button => {
+    button.addEventListener("click", async () => {
+      const docId = button.dataset.docId;
+      if (!docId) return;
+
+      try {
+        await deleteStageValidation(docId);
+        await refreshAll();
+      } catch (error) {
+        console.error("Erreur suppression ID stage :", error);
+        alert("Impossible de supprimer cet ID.");
+      }
+    });
+  });
+}
+
+async function refreshAll() {
+  companyGrid.innerHTML = `<div class="loading-box">Chargement des stages...</div>`;
+  examList.innerHTML = `<div class="loading-box">Chargement des participants...</div>`;
+
+  await loadStageValidations();
+  await loadExamParticipants();
+
+  renderCompanies();
+  renderExamParticipants();
+}
+
+loginForm.addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value;
+
+  loginError.textContent = "";
+  setLoginLoading(true);
+
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+  } catch (error) {
+    console.error("Erreur connexion :", error);
+
+    if (error.code === "auth/invalid-credential") {
+      loginError.textContent = "Email ou mot de passe incorrect.";
+    } else if (error.code === "auth/too-many-requests") {
+      loginError.textContent = "Trop de tentatives. Réessaie plus tard.";
+    } else {
+      loginError.textContent = "Erreur de connexion.";
+    }
+
+    setLoginLoading(false);
+  }
+});
+
+logoutBtn.addEventListener("click", async () => {
+  await signOut(auth);
+});
+
+refreshBtn.addEventListener("click", async () => {
+  await refreshAll();
+});
+
+onAuthStateChanged(auth, async user => {
+  if (!user) {
+    showLogin();
+    return;
+  }
+
+  showDashboard();
+
+  try {
+    await refreshAll();
+  } catch (error) {
+    console.error("Erreur chargement dashboard stage :", error);
+    companyGrid.innerHTML = `<div class="loading-box">Erreur de chargement des stages.</div>`;
+    examList.innerHTML = `<div class="loading-box">Erreur de chargement des examens.</div>`;
+  }
+});
