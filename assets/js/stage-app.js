@@ -321,42 +321,40 @@ function bindCompanyForms() {
     });
   });
 }
-
 function bindDeleteButtons() {
-  document.querySelectorAll("[data-delete-stage]").forEach(button => {
-    button.addEventListener("click", async event => {
-      event.preventDefault();
-      event.stopPropagation();
+  companyGrid.onclick = async (event) => {
+    const button = event.target.closest("[data-delete-stage]");
+    if (!button) return;
 
-      const docId = button.dataset.docId;
+    event.preventDefault();
+    event.stopPropagation();
 
-      if (!docId) {
-        alert("Document Firebase introuvable.");
-        return;
-      }
+    const docId = button.dataset.docId;
 
-      const oldText = button.textContent;
-      button.disabled = true;
-      button.textContent = "...";
+    console.log("Suppression demandée :", docId);
 
-      try {
-        const deleted = await deleteStageValidation(docId);
+    if (!docId) {
+      alert("Document Firebase introuvable.");
+      return;
+    }
 
-        if (deleted) {
-          await refreshAll();
-        } else {
-          button.disabled = false;
-          button.textContent = oldText || "×";
-        }
-      } catch (error) {
-        console.error("Erreur suppression ID stage :", error);
-        alert("Impossible de supprimer cet ID. Vérifie les règles Firestore.");
+    if (!confirm("Supprimer cet ID de stage ?")) return;
 
-        button.disabled = false;
-        button.textContent = oldText || "×";
-      }
-    });
-  });
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "...";
+
+    try {
+      await deleteDoc(doc(db, STAGE_COLLECTION, docId));
+      await refreshAll();
+    } catch (error) {
+      console.error("Erreur suppression ID stage :", error);
+      alert("Impossible de supprimer cet ID. Vérifie les règles Firestore.");
+
+      button.disabled = false;
+      button.textContent = oldText || "×";
+    }
+  };
 }
 
 async function refreshAll() {
