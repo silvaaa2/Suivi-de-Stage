@@ -224,19 +224,23 @@ function renderCompanies() {
     const entries = getStagesByCompany(company.id);
 
     const rowsHtml = entries.length
-      ? entries.map(entry => `
-          <div class="stage-id-row">
-            <strong>${escapeHtml(entry.idUnique)}</strong>
-            <button
-              type="button"
-              data-delete-stage
-              data-doc-id="${escapeHtml(entry.firebaseId)}"
-              title="Supprimer"
-            >
-              ×
-            </button>
-          </div>
-        `).join("")
+      ? entries.map(entry => {
+          const safeDocIdJs = escapeJsString(entry.firebaseId);
+          const safeIdUniqueJs = escapeJsString(entry.idUnique);
+
+          return `
+            <div class="stage-id-row" data-stage-row-id="${escapeHtml(entry.firebaseId)}">
+              <strong>${escapeHtml(entry.idUnique)}</strong>
+              <button
+                type="button"
+                onclick="window.deleteStageIdFromStage('${safeDocIdJs}', '${safeIdUniqueJs}')"
+                title="Supprimer"
+              >
+                ×
+              </button>
+            </div>
+          `;
+        }).join("")
       : `<div class="empty-row">Aucun ID enregistré.</div>`;
 
     return `
@@ -261,11 +265,11 @@ function renderCompanies() {
 
 function renderExamParticipants() {
   if (!examParticipants.length) {
-examList.innerHTML = `
-  <div class="loading-box">
-    Aucun examen à cet instant.
-  </div>
-`;
+    examList.innerHTML = `
+      <div class="loading-box">
+        Aucun examen à cet instant.
+      </div>
+    `;
     return;
   }
 
@@ -346,20 +350,6 @@ async function addStageValidation(companyId, idUnique) {
   }, { merge: true });
 }
 
-async function deleteStageValidation(docId) {
-  if (!docId) {
-    alert("ID Firebase introuvable, impossible de supprimer.");
-    return false;
-  }
-
-  if (!confirm("Supprimer cet ID de stage ?")) {
-    return false;
-  }
-
-  await deleteDoc(doc(db, STAGE_COLLECTION, docId));
-  return true;
-}
-
 function bindCompanyForms() {
   document.querySelectorAll("[data-company-form]").forEach(form => {
     form.addEventListener("submit", async event => {
@@ -388,44 +378,37 @@ function bindCompanyForms() {
   });
 }
 
-/* Suppression des ID de stage */
-document.addEventListener("click", async event => {
-  const stageDeleteButton = event.target.closest("[data-delete-stage]");
-  if (!stageDeleteButton) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-
-  const docId = stageDeleteButton.dataset.docId;
+/* Suppression directe des ID stagiaires à gauche */
+window.deleteStageIdFromStage = async function(docId, idUnique) {
+  console.log("DELETE STAGE ID CLICK OK", {
+    docId,
+    idUnique,
+    currentUserRole,
+    user: auth.currentUser?.email
+  });
 
   if (!docId) {
     alert("Document Firebase introuvable.");
     return;
   }
 
-  const oldText = stageDeleteButton.textContent;
-  stageDeleteButton.disabled = true;
-  stageDeleteButton.textContent = "...";
-
   try {
-    const deleted = await deleteStageValidation(docId);
+    await deleteDoc(doc(db, STAGE_COLLECTION, docId));
 
-    if (deleted) {
-      await refreshAll();
-    } else {
-      stageDeleteButton.disabled = false;
-      stageDeleteButton.textContent = oldText || "×";
-    }
+    const row = document.querySelector(`[data-stage-row-id="${CSS.escape(docId)}"]`);
+    if (row) row.remove();
+
+    console.log("ID stagiaire supprimé avec succès :", idUnique);
+
+    await refreshAll();
+
   } catch (error) {
     console.error("Erreur suppression ID stage :", error);
     alert(`Erreur suppression ID stage : ${error.code || error.message}`);
-
-    stageDeleteButton.disabled = false;
-    stageDeleteButton.textContent = oldText || "×";
   }
-});
+};
 
-/* Suppression / masquage des participants examen */
+/* Suppression / masquage des participants examen à droite */
 window.deleteExamParticipantFromStage = async function(docId, studentName) {
   console.log("DELETE INLINE CLICK OK", {
     docId,
