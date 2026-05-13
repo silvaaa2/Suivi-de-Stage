@@ -160,6 +160,8 @@ async function loadExamParticipants() {
   snap.forEach(docSnap => {
     const data = docSnap.data();
 
+    if (data.archived === true) return;
+
     const normalizedId =
       data.normalizedIdUnique ||
       normalizeIdUnique(data.idUnique || "");
@@ -254,7 +256,7 @@ function renderExamParticipants() {
     examList.innerHTML = `
       <div class="loading-box">
         Aucun participant d’examen trouvé dans Firebase.<br>
-        Il faudra patcher le site examen pour sauvegarder idUnique + studentName.
+        Il faudra ouvrir la page examen pour sauvegarder idUnique + studentName.
       </div>
     `;
     return;
@@ -264,6 +266,21 @@ function renderExamParticipants() {
     const hasStage = hasStageForId(participant.normalizedIdUnique);
     const companyName = getStageCompanyForId(participant.normalizedIdUnique);
     const statusLabel = getStatusLabel(participant.status);
+
+    const deleteButton = currentUserRole === "prof"
+      ? `
+        <button
+          type="button"
+          class="delete-exam-participant-btn"
+          data-delete-exam-participant
+          data-doc-id="${escapeHtml(participant.firebaseId)}"
+          data-student-name="${escapeHtml(participant.studentName)}"
+          title="Supprimer le participant"
+        >
+          ×
+        </button>
+      `
+      : "";
 
     return `
       <div class="exam-row ${hasStage ? "stage-ok" : ""}">
@@ -277,9 +294,73 @@ function renderExamParticipants() {
         <span class="badge ${hasStage ? "ok" : "no"}">
           ${hasStage ? `✅ ${escapeHtml(companyName)}` : "Aucun stage"}
         </span>
+
+        ${deleteButton}
       </div>
     `;
   }).join("");
+
+  bindExamParticipantDeleteButtons();
+}
+
+async function archiveExamParticipant(docId) {
+  if (currentUserRole !== "prof") {
+    alert("Seul un compte professeur peut supprimer un participant.");
+    return false;
+  }
+
+  if (!docId) {
+    alert("Document participant introuvable.");
+    return false;
+  }
+
+  const ref = doc(db, EXAM_COLLECTION, docId);
+
+  await setDoc(ref, {
+    archived: true,
+    archivedBy: auth.currentUser?.email || "professeur inconnu",
+    archivedAt: serverTimestamp()
+  }, { merge: true });
+
+  return true;
+}
+
+function bindExamParticipantDeleteButtons() {
+  examList.onclick = async (event) => {
+    const button = event.target.closest("[data-delete-exam-participant]");
+    if (!button) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    const docId = button.dataset.docId;
+    const studentName = button.dataset.studentName || "ce participant";
+
+    if (!confirm(`Supprimer ${studentName} de la liste des participants ?`)) {
+      return;
+    }
+
+    const oldText = button.textContent;
+    button.disabled = true;
+    button.textContent = "...";
+
+    try {
+      const archived = await archiveExamParticipant(docId);
+
+      if (archived) {
+        await refreshAll();
+      } else {
+        button.disabled = false;
+        button.textContent = oldText || "×";
+      }
+    } catch (error) {
+      console.error("Erreur suppression participant :", error);
+      alert("Impossible de supprimer ce participant. Vérifie les droits Firestore.");
+
+      button.disabled = false;
+      button.textContent = oldText || "×";
+    }
+  };
 }
 
 async function addStageValidation(companyId, idUnique) {
