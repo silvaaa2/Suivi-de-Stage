@@ -78,6 +78,15 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function escapeJsString(value) {
+  return String(value ?? "")
+    .replaceAll("\\", "\\\\")
+    .replaceAll("'", "\\'")
+    .replaceAll('"', "&quot;")
+    .replaceAll("\n", " ")
+    .replaceAll("\r", " ");
+}
+
 function setLoginLoading(isLoading) {
   loginBtn.disabled = isLoading;
   loginBtn.classList.toggle("loading", isLoading);
@@ -266,14 +275,16 @@ function renderExamParticipants() {
     const companyName = getStageCompanyForId(participant.normalizedIdUnique);
     const statusLabel = getStatusLabel(participant.status);
 
+    const safeDocIdHtml = escapeHtml(participant.firebaseId);
+    const safeDocIdJs = escapeJsString(participant.firebaseId);
+    const safeStudentNameJs = escapeJsString(participant.studentName);
+
     const deleteButton = currentUserRole === "prof"
       ? `
         <button
           type="button"
           class="delete-exam-participant-btn"
-          data-delete-exam-participant
-          data-doc-id="${escapeHtml(participant.firebaseId)}"
-          data-student-name="${escapeHtml(participant.studentName)}"
+          onclick="window.deleteExamParticipantFromStage('${safeDocIdJs}', '${safeStudentNameJs}')"
           title="Supprimer le participant"
         >
           ×
@@ -282,7 +293,7 @@ function renderExamParticipants() {
       : "";
 
     return `
-      <div class="exam-row ${hasStage ? "stage-ok" : ""}">
+      <div class="exam-row ${hasStage ? "stage-ok" : ""}" data-exam-row-id="${safeDocIdHtml}">
         <strong>${escapeHtml(participant.idUnique)}</strong>
 
         <div class="exam-name">
@@ -350,32 +361,6 @@ async function deleteStageValidation(docId) {
   return true;
 }
 
-async function archiveExamParticipant(docId, studentName) {
-  if (currentUserRole !== "prof") {
-    alert("Seul un compte professeur peut supprimer un participant.");
-    return false;
-  }
-
-  if (!docId) {
-    alert("Document participant introuvable.");
-    return false;
-  }
-
-  if (!confirm(`Supprimer ${studentName || "ce participant"} de la liste des participants ?`)) {
-    return false;
-  }
-
-  const ref = doc(db, EXAM_COLLECTION, docId);
-
-  await setDoc(ref, {
-    archived: true,
-    archivedBy: auth.currentUser?.email || "professeur inconnu",
-    archivedAt: serverTimestamp()
-  }, { merge: true });
-
-  return true;
-}
-
 function bindCompanyForms() {
   document.querySelectorAll("[data-company-form]").forEach(form => {
     form.addEventListener("submit", async event => {
@@ -404,83 +389,87 @@ function bindCompanyForms() {
   });
 }
 
+/* Suppression des ID de stage */
 document.addEventListener("click", async event => {
   const stageDeleteButton = event.target.closest("[data-delete-stage]");
-  const examDeleteButton = event.target.closest("[data-delete-exam-participant]");
-
-  if (!stageDeleteButton && !examDeleteButton) return;
+  if (!stageDeleteButton) return;
 
   event.preventDefault();
   event.stopPropagation();
 
-  if (stageDeleteButton) {
-    const docId = stageDeleteButton.dataset.docId;
+  const docId = stageDeleteButton.dataset.docId;
 
-    if (!docId) {
-      alert("Document Firebase introuvable.");
-      return;
-    }
-
-    const oldText = stageDeleteButton.textContent;
-    stageDeleteButton.disabled = true;
-    stageDeleteButton.textContent = "...";
-
-    try {
-      const deleted = await deleteStageValidation(docId);
-
-      if (deleted) {
-        await refreshAll();
-      } else {
-        stageDeleteButton.disabled = false;
-        stageDeleteButton.textContent = oldText || "×";
-      }
-    } catch (error) {
-      console.error("Erreur suppression ID stage :", error);
-      alert(`Erreur suppression ID stage : ${error.code || error.message}`);
-
-      stageDeleteButton.disabled = false;
-      stageDeleteButton.textContent = oldText || "×";
-    }
-
+  if (!docId) {
+    alert("Document Firebase introuvable.");
     return;
   }
 
-  if (examDeleteButton) {
-    const docId = examDeleteButton.dataset.docId;
-    const studentName = examDeleteButton.dataset.studentName || "ce participant";
+  const oldText = stageDeleteButton.textContent;
+  stageDeleteButton.disabled = true;
+  stageDeleteButton.textContent = "...";
 
-    console.log("CLICK SUPPRESSION PARTICIPANT OK");
-    console.log("docId =", docId);
-    console.log("role =", currentUserRole);
-    console.log("user =", auth.currentUser?.email);
+  try {
+    const deleted = await deleteStageValidation(docId);
 
-    const oldText = examDeleteButton.textContent;
-    examDeleteButton.disabled = true;
-    examDeleteButton.textContent = "...";
-
-    try {
-      const archived = await archiveExamParticipant(docId, studentName);
-
-      if (archived) {
-        alert("Participant supprimé/masqué ✅");
-
-        const row = examDeleteButton.closest(".exam-row");
-        if (row) row.remove();
-
-        await refreshAll();
-      } else {
-        examDeleteButton.disabled = false;
-        examDeleteButton.textContent = oldText || "×";
-      }
-    } catch (error) {
-      console.error("Erreur suppression participant :", error);
-      alert(`Erreur suppression participant : ${error.code || error.message}`);
-
-      examDeleteButton.disabled = false;
-      examDeleteButton.textContent = oldText || "×";
+    if (deleted) {
+      await refreshAll();
+    } else {
+      stageDeleteButton.disabled = false;
+      stageDeleteButton.textContent = oldText || "×";
     }
+  } catch (error) {
+    console.error("Erreur suppression ID stage :", error);
+    alert(`Erreur suppression ID stage : ${error.code || error.message}`);
+
+    stageDeleteButton.disabled = false;
+    stageDeleteButton.textContent = oldText || "×";
   }
 });
+
+/* Suppression / masquage des participants examen */
+window.deleteExamParticipantFromStage = async function(docId, studentName) {
+  console.log("DELETE INLINE CLICK OK", {
+    docId,
+    studentName,
+    currentUserRole,
+    user: auth.currentUser?.email
+  });
+
+  if (currentUserRole !== "prof") {
+    alert("Seul un compte professeur peut supprimer un participant.");
+    return;
+  }
+
+  if (!docId) {
+    alert("Document participant introuvable.");
+    return;
+  }
+
+  if (!confirm(`Supprimer ${studentName || "ce participant"} de la liste des participants ?`)) {
+    return;
+  }
+
+  try {
+    const ref = doc(db, EXAM_COLLECTION, docId);
+
+    await setDoc(ref, {
+      archived: true,
+      archivedBy: auth.currentUser?.email || "professeur inconnu",
+      archivedAt: serverTimestamp()
+    }, { merge: true });
+
+    alert("Participant supprimé/masqué ✅");
+
+    const row = document.querySelector(`[data-exam-row-id="${CSS.escape(docId)}"]`);
+    if (row) row.remove();
+
+    await refreshAll();
+
+  } catch (error) {
+    console.error("Erreur suppression participant :", error);
+    alert(`Erreur suppression : ${error.code || error.message}`);
+  }
+};
 
 async function refreshAll() {
   companyGrid.innerHTML = `<div class="loading-box">Chargement des stages...</div>`;
