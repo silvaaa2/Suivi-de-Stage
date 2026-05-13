@@ -445,10 +445,6 @@ window.deleteExamParticipantFromStage = async function(docId, studentName) {
     return;
   }
 
-  if (!confirm(`Supprimer ${studentName || "ce participant"} de la liste des participants ?`)) {
-    return;
-  }
-
   try {
     const ref = doc(db, EXAM_COLLECTION, docId);
 
@@ -458,10 +454,10 @@ window.deleteExamParticipantFromStage = async function(docId, studentName) {
       archivedAt: serverTimestamp()
     }, { merge: true });
 
-    alert("Participant supprimé/masqué ✅");
-
     const row = document.querySelector(`[data-exam-row-id="${CSS.escape(docId)}"]`);
     if (row) row.remove();
+
+    console.log("Participant masqué avec succès :", studentName);
 
     await refreshAll();
 
