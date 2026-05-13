@@ -579,9 +579,3 @@ onAuthStateChanged(auth, async user => {
     `;
   }
 });
-console.log("STAGE APP VERSION 9001 CHARGÉE");
-
-window.deleteExamParticipantFromStage = async function(docId, studentName) {
-  alert("CLICK SUPPRESSION OK");
-  console.log("DELETE INLINE CLICK OK", { docId, studentName });
-};
