@@ -261,12 +261,11 @@ function renderCompanies() {
 
 function renderExamParticipants() {
   if (!examParticipants.length) {
-    examList.innerHTML = `
-      <div class="loading-box">
-        Aucun participant d’examen trouvé dans Firebase.<br>
-        Il faudra ouvrir la page examen pour sauvegarder idUnique + studentName.
-      </div>
-    `;
+examList.innerHTML = `
+  <div class="loading-box">
+    Aucun examen à cet instant.
+  </div>
+`;
     return;
   }
 
