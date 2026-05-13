@@ -304,6 +304,10 @@ function renderExamParticipants() {
 }
 
 async function archiveExamParticipant(docId) {
+  console.log("archiveExamParticipant docId =", docId);
+  console.log("currentUserRole =", currentUserRole);
+  console.log("currentUser =", auth.currentUser?.email);
+
   if (currentUserRole !== "prof") {
     alert("Seul un compte professeur peut supprimer un participant.");
     return false;
@@ -328,13 +332,26 @@ async function archiveExamParticipant(docId) {
 function bindExamParticipantDeleteButtons() {
   examList.onclick = async (event) => {
     const button = event.target.closest("[data-delete-exam-participant]");
-    if (!button) return;
+
+    if (!button) {
+      return;
+    }
 
     event.preventDefault();
     event.stopPropagation();
 
+    console.log("CLICK SUPPRESSION PARTICIPANT");
+
     const docId = button.dataset.docId;
     const studentName = button.dataset.studentName || "ce participant";
+
+    console.log("docId participant =", docId);
+    console.log("studentName =", studentName);
+
+    if (!docId) {
+      alert("Document participant introuvable.");
+      return;
+    }
 
     if (!confirm(`Supprimer ${studentName} de la liste des participants ?`)) {
       return;
@@ -348,6 +365,7 @@ function bindExamParticipantDeleteButtons() {
       const archived = await archiveExamParticipant(docId);
 
       if (archived) {
+        alert("Participant supprimé/masqué ✅");
         await refreshAll();
       } else {
         button.disabled = false;
@@ -355,7 +373,7 @@ function bindExamParticipantDeleteButtons() {
       }
     } catch (error) {
       console.error("Erreur suppression participant :", error);
-      alert("Impossible de supprimer ce participant. Vérifie les droits Firestore.");
+      alert(`Erreur suppression : ${error.code || error.message}`);
 
       button.disabled = false;
       button.textContent = oldText || "×";
