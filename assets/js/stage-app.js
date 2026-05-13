@@ -12,6 +12,7 @@ import {
   collection,
   getDocs,
   doc,
+  getDoc,
   setDoc,
   deleteDoc,
   serverTimestamp
@@ -59,6 +60,7 @@ const examList = document.getElementById("examList");
 
 let stageValidations = [];
 let examParticipants = [];
+let currentUserRole = null;
 
 function normalizeIdUnique(value) {
   return String(value || "")
@@ -96,6 +98,41 @@ function showDashboard() {
   dashboard.hidden = false;
   refreshBtn.hidden = false;
   logoutBtn.hidden = false;
+}
+
+async function getUserRole(user) {
+  if (!user?.email) return null;
+
+  try {
+    const userRef = doc(db, "users", user.email);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) return null;
+
+    return userSnap.data().role || null;
+  } catch (error) {
+    console.error("Erreur lecture rôle utilisateur :", error);
+    return null;
+  }
+}
+
+function isAllowedStageRole(role) {
+  return role === "prof" || role === "stage";
+}
+
+async function refuseAccess(user) {
+  console.warn("Accès refusé site stage :", user?.email || "email inconnu");
+
+  currentUserRole = null;
+
+  try {
+    await signOut(auth);
+  } catch (error) {
+    console.error("Erreur déconnexion après refus :", error);
+  }
+
+  loginError.textContent = "Accès refusé. Ce compte n’est pas autorisé sur le suivi de stage.";
+  showLogin();
 }
 
 function buildStageDocId(companyId, normalizedIdUnique) {
@@ -275,6 +312,7 @@ async function addStageValidation(companyId, idUnique) {
     companyName: company.name,
     status: "approved",
     addedBy: auth.currentUser?.email || "compte stage",
+    addedByRole: currentUserRole || "unknown",
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { merge: true });
@@ -321,6 +359,7 @@ function bindCompanyForms() {
     });
   });
 }
+
 function bindDeleteButtons() {
   companyGrid.onclick = async (event) => {
     const button = event.target.closest("[data-delete-stage]");
@@ -338,15 +377,19 @@ function bindDeleteButtons() {
       return;
     }
 
-    if (!confirm("Supprimer cet ID de stage ?")) return;
-
     const oldText = button.textContent;
     button.disabled = true;
     button.textContent = "...";
 
     try {
-      await deleteDoc(doc(db, STAGE_COLLECTION, docId));
-      await refreshAll();
+      const deleted = await deleteStageValidation(docId);
+
+      if (deleted) {
+        await refreshAll();
+      } else {
+        button.disabled = false;
+        button.textContent = oldText || "×";
+      }
     } catch (error) {
       console.error("Erreur suppression ID stage :", error);
       alert("Impossible de supprimer cet ID. Vérifie les règles Firestore.");
@@ -378,7 +421,20 @@ loginForm.addEventListener("submit", async event => {
   setLoginLoading(true);
 
   try {
-    await signInWithEmailAndPassword(auth, email, password);
+    const credential = await signInWithEmailAndPassword(auth, email, password);
+    const user = credential.user;
+
+    const role = await getUserRole(user);
+
+    if (!isAllowedStageRole(role)) {
+      await refuseAccess(user);
+      return;
+    }
+
+    currentUserRole = role;
+    showDashboard();
+    await refreshAll();
+
   } catch (error) {
     console.error("Erreur connexion Firebase :", error.code, error.message);
 
@@ -396,6 +452,8 @@ loginForm.addEventListener("submit", async event => {
       loginError.textContent = "Connexion email/mot de passe désactivée dans Firebase.";
     } else if (error.code === "auth/network-request-failed") {
       loginError.textContent = "Erreur réseau.";
+    } else if (error.code === "permission-denied") {
+      loginError.textContent = "Accès refusé. Rôle utilisateur introuvable ou non autorisé.";
     } else {
       loginError.textContent = `Erreur : ${error.code}`;
     }
@@ -405,6 +463,7 @@ loginForm.addEventListener("submit", async event => {
 });
 
 logoutBtn.addEventListener("click", async () => {
+  currentUserRole = null;
   await signOut(auth);
 });
 
@@ -414,10 +473,19 @@ refreshBtn.addEventListener("click", async () => {
 
 onAuthStateChanged(auth, async user => {
   if (!user) {
+    currentUserRole = null;
     showLogin();
     return;
   }
 
+  const role = await getUserRole(user);
+
+  if (!isAllowedStageRole(role)) {
+    await refuseAccess(user);
+    return;
+  }
+
+  currentUserRole = role;
   showDashboard();
 
   try {
