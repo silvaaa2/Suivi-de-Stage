@@ -264,13 +264,13 @@ function renderCompanies() {
           <button type="submit">+</button>
         </form>
 
-        <form class="company-bulk-form" data-company-bulk-form data-company-id="${escapeHtml(company.id)}">
-          <textarea
-            placeholder="Coller une liste d'ID..."
-            rows="4"
-          ></textarea>
-          <button type="submit">Ajouter liste</button>
-        </form>
+        <button
+          type="button"
+          class="open-bulk-modal-btn"
+          onclick="window.openBulkStageModal('${escapeJsString(company.id)}')"
+        >
+          Ajouter une liste
+        </button>
 
         <div class="stage-id-list">
           ${rowsHtml}
@@ -280,7 +280,7 @@ function renderCompanies() {
   }).join("");
 
   bindCompanyForms();
-  bindCompanyBulkForms();
+  ensureBulkModal();
 }
 
 function renderExamParticipants() {
@@ -453,44 +453,121 @@ function bindCompanyForms() {
   });
 }
 
-function bindCompanyBulkForms() {
-  document.querySelectorAll("[data-company-bulk-form]").forEach(form => {
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
+/* =========================================================
+   MODAL AJOUT LISTE
+========================================================= */
 
-      const companyId = form.dataset.companyId;
-      const textarea = form.querySelector("textarea");
-      const submitBtn = form.querySelector("button");
+function ensureBulkModal() {
+  if (document.getElementById("bulkStageModal")) return;
 
-      const rawValue = textarea.value.trim();
-      const ids = parseBulkIds(rawValue);
+  document.body.insertAdjacentHTML("beforeend", `
+    <div id="bulkStageModal" class="bulk-modal-overlay" hidden>
+      <div class="bulk-modal-card">
+        <button type="button" class="bulk-modal-close" onclick="window.closeBulkStageModal()">×</button>
 
-      if (!ids.length) {
-        alert("Colle au moins un ID Unique.");
-        return;
-      }
+        <p class="bulk-modal-kicker">Ajout en masse</p>
+        <h2 id="bulkStageTitle">Ajouter une liste</h2>
 
-      submitBtn.disabled = true;
-      submitBtn.textContent = "Ajout...";
+        <p class="bulk-modal-text">
+          Collez plusieurs ID Unique. Vous pouvez utiliser des retours à la ligne, virgules, espaces ou points-virgules.
+        </p>
 
-      try {
-        const result = await addStageValidationsBulk(companyId, ids);
+        <textarea
+          id="bulkStageTextarea"
+          placeholder="Ex:
+322644
+265982
+266167"
+        ></textarea>
 
-        textarea.value = "";
+        <div class="bulk-modal-actions">
+          <button type="button" class="bulk-cancel-btn" onclick="window.closeBulkStageModal()">
+            Annuler
+          </button>
 
-        alert(`${result.added} ID ajouté(s). ${result.skipped} doublon(s) ignoré(s).`);
+          <button type="button" id="bulkStageSubmitBtn" class="bulk-submit-btn">
+            Ajouter la liste
+          </button>
+        </div>
+      </div>
+    </div>
+  `);
 
-        await refreshAll();
-      } catch (error) {
-        console.error("Erreur ajout liste ID stage :", error);
-        alert("Impossible d’ajouter cette liste. Vérifie les règles Firebase.");
-      } finally {
-        submitBtn.disabled = false;
-        submitBtn.textContent = "Ajouter liste";
-      }
-    });
+  const submitBtn = document.getElementById("bulkStageSubmitBtn");
+
+  submitBtn.addEventListener("click", async () => {
+    const modal = document.getElementById("bulkStageModal");
+    const textarea = document.getElementById("bulkStageTextarea");
+    const companyId = modal.dataset.companyId;
+
+    const ids = parseBulkIds(textarea.value);
+
+    if (!companyId) {
+      alert("Entreprise introuvable.");
+      return;
+    }
+
+    if (!ids.length) {
+      alert("Colle au moins un ID Unique.");
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = "Ajout...";
+
+    try {
+      const result = await addStageValidationsBulk(companyId, ids);
+
+      textarea.value = "";
+      window.closeBulkStageModal();
+
+      alert(`${result.added} ID ajouté(s). ${result.skipped} doublon(s) ignoré(s).`);
+
+      await refreshAll();
+    } catch (error) {
+      console.error("Erreur ajout liste ID stage :", error);
+      alert("Impossible d’ajouter cette liste. Vérifie les règles Firebase.");
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = "Ajouter la liste";
+    }
   });
 }
+
+window.openBulkStageModal = function(companyId) {
+  const modal = document.getElementById("bulkStageModal");
+  const textarea = document.getElementById("bulkStageTextarea");
+  const title = document.getElementById("bulkStageTitle");
+
+  const company = COMPANIES.find(item => item.id === companyId);
+
+  if (!modal || !textarea || !title || !company) return;
+
+  modal.dataset.companyId = companyId;
+  title.textContent = `Ajouter une liste — ${company.name}`;
+
+  modal.hidden = false;
+
+  requestAnimationFrame(() => {
+    modal.classList.add("active");
+    textarea.focus();
+  });
+};
+
+window.closeBulkStageModal = function() {
+  const modal = document.getElementById("bulkStageModal");
+  const textarea = document.getElementById("bulkStageTextarea");
+
+  if (!modal) return;
+
+  modal.classList.remove("active");
+
+  setTimeout(() => {
+    modal.hidden = true;
+    modal.dataset.companyId = "";
+    if (textarea) textarea.value = "";
+  }, 180);
+};
 
 /* Suppression directe des ID stagiaires à gauche */
 window.deleteStageIdFromStage = async function(docId, idUnique) {
