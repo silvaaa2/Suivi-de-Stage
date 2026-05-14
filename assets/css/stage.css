@@ -601,3 +601,79 @@ main {
     justify-self: start;
   }
 }
+/* =========================================================
+   AJOUT LISTE ID UNIQUE - BULK FORM
+========================================================= */
+
+.company-bulk-form {
+  margin: 0 12px 14px;
+  padding: 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  background:
+    radial-gradient(circle at 10% 0%, rgba(214,180,106,.10), transparent 34%),
+    rgba(0,0,0,.18);
+  display: grid;
+  gap: 10px;
+}
+
+.company-bulk-form textarea {
+  width: 100%;
+  min-height: 92px;
+  resize: vertical;
+
+  border-radius: 15px;
+  border: 1px solid rgba(255,255,255,.10);
+
+  background: rgba(0,0,0,.28);
+  color: var(--text);
+
+  padding: 12px 13px;
+
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.35;
+
+  outline: none;
+}
+
+.company-bulk-form textarea::placeholder {
+  color: rgba(255,247,232,.36);
+  font-weight: 850;
+}
+
+.company-bulk-form textarea:focus {
+  border-color: rgba(214,180,106,.48);
+  box-shadow: 0 0 0 4px rgba(214,180,106,.10);
+}
+
+.company-bulk-form button {
+  height: 40px;
+
+  border: 1px solid rgba(214,180,106,.30);
+  border-radius: 999px;
+
+  background: linear-gradient(135deg, rgba(214,180,106,.22), rgba(255,226,154,.18));
+  color: var(--gold2);
+
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+
+  cursor: pointer;
+  transition: .2s ease;
+}
+
+.company-bulk-form button:hover {
+  transform: translateY(-1px);
+  background: linear-gradient(135deg, rgba(214,180,106,.30), rgba(255,226,154,.24));
+}
+
+.company-bulk-form button:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+  transform: none;
+}
