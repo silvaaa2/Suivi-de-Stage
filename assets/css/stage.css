@@ -883,3 +883,11 @@ main {
   cursor: not-allowed;
   transform: none;
 }
+/* =========================================================
+   PATCH BOUTON UNIQUE AJOUT LISTE
+========================================================= */
+
+.open-bulk-modal-btn {
+  margin: 16px 12px 14px;
+  width: calc(100% - 24px);
+}
