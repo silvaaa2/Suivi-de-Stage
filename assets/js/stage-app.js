@@ -259,11 +259,6 @@ function renderCompanies() {
         <div class="company-head">${escapeHtml(company.name)}</div>
         <div class="company-subhead">ID Unique</div>
 
-        <form class="company-form" data-company-form data-company-id="${escapeHtml(company.id)}">
-          <input type="text" placeholder="Ex: 322644" inputmode="numeric" required>
-          <button type="submit">+</button>
-        </form>
-
         <button
           type="button"
           class="open-bulk-modal-btn"
@@ -279,7 +274,6 @@ function renderCompanies() {
     `;
   }).join("");
 
-  bindCompanyForms();
   ensureBulkModal();
 }
 
@@ -334,44 +328,6 @@ function renderExamParticipants() {
   }).join("");
 }
 
-async function addStageValidation(companyId, idUnique) {
-  const company = COMPANIES.find(item => item.id === companyId);
-  if (!company) return false;
-
-  const normalizedIdUnique = normalizeIdUnique(idUnique);
-
-  if (!normalizedIdUnique) {
-    alert("ID Unique invalide.");
-    return false;
-  }
-
-  const alreadyExists = stageValidations.some(item => {
-    return item.companyId === companyId && item.normalizedIdUnique === normalizedIdUnique;
-  });
-
-  if (alreadyExists) {
-    alert("Cet ID est déjà enregistré dans cette entreprise.");
-    return false;
-  }
-
-  const docId = buildStageDocId(companyId, normalizedIdUnique);
-  const ref = doc(db, STAGE_COLLECTION, docId);
-
-  await setDoc(ref, {
-    idUnique: String(idUnique).trim(),
-    normalizedIdUnique,
-    companyId: company.id,
-    companyName: company.name,
-    status: "approved",
-    addedBy: auth.currentUser?.email || "compte stage",
-    addedByRole: currentUserRole || "unknown",
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  }, { merge: true });
-
-  return true;
-}
-
 async function addStageValidationsBulk(companyId, ids) {
   const company = COMPANIES.find(item => item.id === companyId);
   if (!company) return { added: 0, skipped: 0 };
@@ -420,37 +376,6 @@ async function addStageValidationsBulk(companyId, ids) {
   }
 
   return { added, skipped };
-}
-
-function bindCompanyForms() {
-  document.querySelectorAll("[data-company-form]").forEach(form => {
-    form.addEventListener("submit", async event => {
-      event.preventDefault();
-
-      const companyId = form.dataset.companyId;
-      const input = form.querySelector("input");
-      const idUnique = input.value.trim();
-
-      if (!idUnique) return;
-
-      const submitBtn = form.querySelector("button");
-      submitBtn.disabled = true;
-
-      try {
-        const added = await addStageValidation(companyId, idUnique);
-
-        if (added) {
-          input.value = "";
-          await refreshAll();
-        }
-      } catch (error) {
-        console.error("Erreur ajout ID stage :", error);
-        alert("Impossible d’ajouter cet ID. Vérifie les règles Firebase.");
-      } finally {
-        submitBtn.disabled = false;
-      }
-    });
-  });
 }
 
 /* =========================================================
