@@ -677,3 +677,209 @@ main {
   cursor: not-allowed;
   transform: none;
 }
+/* =========================================================
+   BULK MODAL - AJOUT LISTE ID UNIQUE
+========================================================= */
+
+.open-bulk-modal-btn {
+  margin: 0 12px 14px;
+  height: 40px;
+
+  border: 1px solid rgba(214,180,106,.28);
+  border-radius: 999px;
+
+  background:
+    radial-gradient(circle at 18% 0%, rgba(214,180,106,.18), transparent 35%),
+    rgba(214,180,106,.10);
+
+  color: var(--gold2);
+
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+
+  cursor: pointer;
+  transition: .2s ease;
+}
+
+.open-bulk-modal-btn:hover {
+  transform: translateY(-1px);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(214,180,106,.25), transparent 35%),
+    rgba(214,180,106,.16);
+}
+
+.bulk-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+
+  display: grid;
+  place-items: center;
+
+  padding: 24px;
+
+  background: rgba(0,0,0,.62);
+  backdrop-filter: blur(14px);
+
+  opacity: 0;
+  pointer-events: none;
+
+  transition: opacity .18s ease;
+}
+
+.bulk-modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bulk-modal-overlay[hidden] {
+  display: none !important;
+}
+
+.bulk-modal-card {
+  width: min(560px, 100%);
+  position: relative;
+
+  padding: 30px;
+  border-radius: 32px;
+  border: 1px solid rgba(255,255,255,.11);
+
+  background:
+    radial-gradient(circle at 16% 0%, rgba(214,180,106,.16), transparent 34%),
+    linear-gradient(145deg, rgba(255,255,255,.075), rgba(255,255,255,.030)),
+    rgba(8,8,8,.94);
+
+  box-shadow:
+    0 35px 120px rgba(0,0,0,.65),
+    inset 0 1px 0 rgba(255,255,255,.05);
+
+  transform: translateY(18px) scale(.98);
+  transition: transform .18s ease;
+}
+
+.bulk-modal-overlay.active .bulk-modal-card {
+  transform: translateY(0) scale(1);
+}
+
+.bulk-modal-close {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+
+  width: 36px;
+  height: 36px;
+
+  border: 1px solid rgba(248,113,113,.28);
+  border-radius: 999px;
+
+  background: rgba(248,113,113,.12);
+  color: var(--red);
+
+  font-size: 22px;
+  font-weight: 1000;
+  line-height: 1;
+
+  cursor: pointer;
+}
+
+.bulk-modal-kicker {
+  margin: 0 0 8px;
+  color: var(--gold2);
+  font-size: 12px;
+  font-weight: 1000;
+  text-transform: uppercase;
+}
+
+.bulk-modal-card h2 {
+  margin: 0;
+  max-width: 440px;
+
+  font-size: clamp(34px, 5vw, 58px);
+  line-height: .9;
+  letter-spacing: -.065em;
+}
+
+.bulk-modal-text {
+  margin: 14px 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
+.bulk-modal-card textarea {
+  width: 100%;
+  min-height: 210px;
+  resize: vertical;
+
+  border-radius: 22px;
+  border: 1px solid rgba(255,255,255,.11);
+
+  background: rgba(0,0,0,.30);
+  color: var(--text);
+
+  padding: 18px;
+
+  font-family: inherit;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.45;
+
+  outline: none;
+}
+
+.bulk-modal-card textarea::placeholder {
+  color: rgba(255,247,232,.35);
+}
+
+.bulk-modal-card textarea:focus {
+  border-color: rgba(214,180,106,.52);
+  box-shadow: 0 0 0 4px rgba(214,180,106,.12);
+}
+
+.bulk-modal-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.bulk-cancel-btn,
+.bulk-submit-btn {
+  height: 46px;
+  padding: 0 18px;
+
+  border-radius: 999px;
+
+  font-family: inherit;
+  font-weight: 1000;
+
+  cursor: pointer;
+  transition: .2s ease;
+}
+
+.bulk-cancel-btn {
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.06);
+  color: var(--text);
+}
+
+.bulk-submit-btn {
+  border: 1px solid rgba(214,180,106,.30);
+  background: linear-gradient(135deg, var(--gold), var(--gold2));
+  color: #111;
+}
+
+.bulk-cancel-btn:hover,
+.bulk-submit-btn:hover {
+  transform: translateY(-1px);
+}
+
+.bulk-submit-btn:disabled {
+  opacity: .65;
+  cursor: not-allowed;
+  transform: none;
+}
