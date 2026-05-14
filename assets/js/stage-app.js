@@ -87,6 +87,17 @@ function escapeJsString(value) {
     .replaceAll("\r", " ");
 }
 
+function parseBulkIds(value) {
+  return String(value || "")
+    .split(/[\n,;|\t ]+/g)
+    .map(item => item.trim())
+    .filter(Boolean)
+    .filter((item, index, array) => {
+      const normalized = normalizeIdUnique(item);
+      return normalized && array.findIndex(other => normalizeIdUnique(other) === normalized) === index;
+    });
+}
+
 function setLoginLoading(isLoading) {
   loginBtn.disabled = isLoading;
   loginBtn.classList.toggle("loading", isLoading);
@@ -253,6 +264,14 @@ function renderCompanies() {
           <button type="submit">+</button>
         </form>
 
+        <form class="company-bulk-form" data-company-bulk-form data-company-id="${escapeHtml(company.id)}">
+          <textarea
+            placeholder="Coller une liste d'ID..."
+            rows="4"
+          ></textarea>
+          <button type="submit">Ajouter liste</button>
+        </form>
+
         <div class="stage-id-list">
           ${rowsHtml}
         </div>
@@ -261,6 +280,7 @@ function renderCompanies() {
   }).join("");
 
   bindCompanyForms();
+  bindCompanyBulkForms();
 }
 
 function renderExamParticipants() {
@@ -316,13 +336,13 @@ function renderExamParticipants() {
 
 async function addStageValidation(companyId, idUnique) {
   const company = COMPANIES.find(item => item.id === companyId);
-  if (!company) return;
+  if (!company) return false;
 
   const normalizedIdUnique = normalizeIdUnique(idUnique);
 
   if (!normalizedIdUnique) {
     alert("ID Unique invalide.");
-    return;
+    return false;
   }
 
   const alreadyExists = stageValidations.some(item => {
@@ -331,7 +351,7 @@ async function addStageValidation(companyId, idUnique) {
 
   if (alreadyExists) {
     alert("Cet ID est déjà enregistré dans cette entreprise.");
-    return;
+    return false;
   }
 
   const docId = buildStageDocId(companyId, normalizedIdUnique);
@@ -348,6 +368,58 @@ async function addStageValidation(companyId, idUnique) {
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { merge: true });
+
+  return true;
+}
+
+async function addStageValidationsBulk(companyId, ids) {
+  const company = COMPANIES.find(item => item.id === companyId);
+  if (!company) return { added: 0, skipped: 0 };
+
+  const cleanIds = parseBulkIds(ids);
+  let added = 0;
+  let skipped = 0;
+
+  for (const idUnique of cleanIds) {
+    const normalizedIdUnique = normalizeIdUnique(idUnique);
+
+    const alreadyExists = stageValidations.some(item => {
+      return item.companyId === companyId && item.normalizedIdUnique === normalizedIdUnique;
+    });
+
+    if (alreadyExists) {
+      skipped++;
+      continue;
+    }
+
+    const docId = buildStageDocId(companyId, normalizedIdUnique);
+    const ref = doc(db, STAGE_COLLECTION, docId);
+
+    await setDoc(ref, {
+      idUnique: String(idUnique).trim(),
+      normalizedIdUnique,
+      companyId: company.id,
+      companyName: company.name,
+      status: "approved",
+      addedBy: auth.currentUser?.email || "compte stage",
+      addedByRole: currentUserRole || "unknown",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+
+    stageValidations.push({
+      firebaseId: docId,
+      idUnique: String(idUnique).trim(),
+      normalizedIdUnique,
+      companyId: company.id,
+      companyName: company.name,
+      status: "approved"
+    });
+
+    added++;
+  }
+
+  return { added, skipped };
 }
 
 function bindCompanyForms() {
@@ -365,14 +437,56 @@ function bindCompanyForms() {
       submitBtn.disabled = true;
 
       try {
-        await addStageValidation(companyId, idUnique);
-        input.value = "";
-        await refreshAll();
+        const added = await addStageValidation(companyId, idUnique);
+
+        if (added) {
+          input.value = "";
+          await refreshAll();
+        }
       } catch (error) {
         console.error("Erreur ajout ID stage :", error);
         alert("Impossible d’ajouter cet ID. Vérifie les règles Firebase.");
       } finally {
         submitBtn.disabled = false;
+      }
+    });
+  });
+}
+
+function bindCompanyBulkForms() {
+  document.querySelectorAll("[data-company-bulk-form]").forEach(form => {
+    form.addEventListener("submit", async event => {
+      event.preventDefault();
+
+      const companyId = form.dataset.companyId;
+      const textarea = form.querySelector("textarea");
+      const submitBtn = form.querySelector("button");
+
+      const rawValue = textarea.value.trim();
+      const ids = parseBulkIds(rawValue);
+
+      if (!ids.length) {
+        alert("Colle au moins un ID Unique.");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Ajout...";
+
+      try {
+        const result = await addStageValidationsBulk(companyId, ids);
+
+        textarea.value = "";
+
+        alert(`${result.added} ID ajouté(s). ${result.skipped} doublon(s) ignoré(s).`);
+
+        await refreshAll();
+      } catch (error) {
+        console.error("Erreur ajout liste ID stage :", error);
+        alert("Impossible d’ajouter cette liste. Vérifie les règles Firebase.");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Ajouter liste";
       }
     });
   });
