@@ -259,13 +259,24 @@ function renderCompanies() {
         <div class="company-head">${escapeHtml(company.name)}</div>
         <div class="company-subhead">ID Unique</div>
 
-        <button
-          type="button"
-          class="open-bulk-modal-btn"
-          onclick="window.openBulkStageModal('${escapeJsString(company.id)}')"
-        >
-          Ajouter une liste
-        </button>
+        <div class="company-actions">
+          <button
+            type="button"
+            class="open-bulk-modal-btn"
+            onclick="window.openBulkStageModal('${escapeJsString(company.id)}')"
+          >
+            Ajouter une liste
+          </button>
+
+          <button
+            type="button"
+            class="delete-company-list-btn"
+            onclick="window.deleteCompanyStageList('${escapeJsString(company.id)}')"
+            ${entries.length ? "" : "disabled"}
+          >
+            Supprimer liste
+          </button>
+        </div>
 
         <div class="stage-id-list">
           ${rowsHtml}
@@ -287,7 +298,21 @@ function renderExamParticipants() {
     return;
   }
 
-  examList.innerHTML = examParticipants.map(participant => {
+  const deleteAllButton = currentUserRole === "prof"
+    ? `
+      <div class="exam-list-actions">
+        <button
+          type="button"
+          class="delete-all-exams-btn"
+          onclick="window.deleteAllExamParticipantsFromStage()"
+        >
+          Supprimer tout
+        </button>
+      </div>
+    `
+    : "";
+
+  const rowsHtml = examParticipants.map(participant => {
     const hasStage = hasStageForId(participant.normalizedIdUnique);
     const companyName = getStageCompanyForId(participant.normalizedIdUnique);
     const statusLabel = getStatusLabel(participant.status);
@@ -326,6 +351,11 @@ function renderExamParticipants() {
       </div>
     `;
   }).join("");
+
+  examList.innerHTML = `
+    ${deleteAllButton}
+    ${rowsHtml}
+  `;
 }
 
 async function addStageValidationsBulk(companyId, ids) {
@@ -494,7 +524,10 @@ window.closeBulkStageModal = function() {
   }, 180);
 };
 
-/* Suppression directe des ID stagiaires à gauche */
+/* =========================================================
+   SUPPRESSION ID / LISTES STAGE
+========================================================= */
+
 window.deleteStageIdFromStage = async function(docId, idUnique) {
   console.log("DELETE STAGE ID CLICK OK", {
     docId,
@@ -524,7 +557,41 @@ window.deleteStageIdFromStage = async function(docId, idUnique) {
   }
 };
 
-/* Suppression / masquage des participants examen à droite */
+window.deleteCompanyStageList = async function(companyId) {
+  const company = COMPANIES.find(item => item.id === companyId);
+  if (!company) {
+    alert("Entreprise introuvable.");
+    return;
+  }
+
+  const entries = getStagesByCompany(companyId);
+
+  if (!entries.length) {
+    alert("Aucun ID à supprimer pour cette entreprise.");
+    return;
+  }
+
+  const confirmed = confirm(`Supprimer toute la liste de ${company.name} ?\n\n${entries.length} ID seront supprimés.`);
+  if (!confirmed) return;
+
+  try {
+    await Promise.all(
+      entries.map(entry => deleteDoc(doc(db, STAGE_COLLECTION, entry.firebaseId)))
+    );
+
+    console.log(`Liste supprimée pour ${company.name} :`, entries.length);
+
+    await refreshAll();
+  } catch (error) {
+    console.error("Erreur suppression liste entreprise :", error);
+    alert(`Erreur suppression liste : ${error.code || error.message}`);
+  }
+};
+
+/* =========================================================
+   SUPPRESSION / MASQUAGE PARTICIPANTS EXAMEN
+========================================================= */
+
 window.deleteExamParticipantFromStage = async function(docId, studentName) {
   console.log("DELETE INLINE CLICK OK", {
     docId,
@@ -562,6 +629,42 @@ window.deleteExamParticipantFromStage = async function(docId, studentName) {
   } catch (error) {
     console.error("Erreur suppression participant :", error);
     alert(`Erreur suppression : ${error.code || error.message}`);
+  }
+};
+
+window.deleteAllExamParticipantsFromStage = async function() {
+  if (currentUserRole !== "prof") {
+    alert("Seul un compte professeur peut supprimer tous les participants.");
+    return;
+  }
+
+  if (!examParticipants.length) {
+    alert("Aucun examen à supprimer.");
+    return;
+  }
+
+  const confirmed = confirm(`Supprimer tous les examens affichés ?\n\n${examParticipants.length} participant(s) seront masqués.`);
+  if (!confirmed) return;
+
+  try {
+    await Promise.all(
+      examParticipants.map(participant => {
+        const ref = doc(db, EXAM_COLLECTION, participant.firebaseId);
+
+        return setDoc(ref, {
+          archived: true,
+          archivedBy: auth.currentUser?.email || "professeur inconnu",
+          archivedAt: serverTimestamp()
+        }, { merge: true });
+      })
+    );
+
+    console.log("Tous les participants examens ont été masqués :", examParticipants.length);
+
+    await refreshAll();
+  } catch (error) {
+    console.error("Erreur suppression tous examens :", error);
+    alert(`Erreur suppression examens : ${error.code || error.message}`);
   }
 };
 
