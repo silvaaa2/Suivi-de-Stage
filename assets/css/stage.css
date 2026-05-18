@@ -1066,3 +1066,38 @@ main {
     grid-template-columns: 1fr;
   }
 }
+/* =========================================================
+   PATCH FOND IMAGE SOMBRE - LISIBILITÉ
+========================================================= */
+
+.stage-header {
+  background: rgba(0,0,0,.78);
+}
+
+.stage-card,
+.login-card,
+.company-column,
+.exam-row,
+.loading-box {
+  backdrop-filter: blur(18px);
+}
+
+.stage-card {
+  background:
+    radial-gradient(circle at 18% 0%, rgba(214,180,106,.10), transparent 30%),
+    linear-gradient(145deg, rgba(18,18,18,.78), rgba(8,8,8,.68));
+}
+
+.company-column {
+  background:
+    linear-gradient(145deg, rgba(18,18,18,.82), rgba(8,8,8,.72));
+}
+
+.exam-row {
+  background:
+    linear-gradient(145deg, rgba(18,18,18,.82), rgba(8,8,8,.72));
+}
+
+.loading-box {
+  background: rgba(18,18,18,.72);
+}
