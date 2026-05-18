@@ -32,14 +32,14 @@ body {
     url("../img/images.png"),
     var(--bg);
 
-background-size:
-  auto,
-  70px 70px,
-  70px 70px,
-  auto,
-  auto,
-  620px auto,
-  auto;
+  background-size:
+    auto,
+    70px 70px,
+    70px 70px,
+    auto,
+    auto,
+    620px auto,
+    auto;
 
   background-position:
     center,
@@ -47,7 +47,7 @@ background-size:
     center,
     center,
     center,
-    center,
+    center 115px,
     center;
 
   background-repeat:
