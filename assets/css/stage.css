@@ -29,7 +29,7 @@ body {
     linear-gradient(90deg, rgba(255,255,255,.030) 1px, transparent 1px),
     radial-gradient(circle at 12% 10%, rgba(214,180,106,.16), transparent 28%),
     radial-gradient(circle at 86% 20%, rgba(255,255,255,.06), transparent 24%),
-    url("../../img/images.png"),
+    url("../img/images.png"),
     var(--bg);
 
   background-size:
@@ -61,7 +61,6 @@ body {
 
   background-attachment: fixed;
 }
-
 .stage-header {
   height: 88px;
   position: sticky;
