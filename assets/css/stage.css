@@ -32,23 +32,23 @@ body {
     url("../img/images.png"),
     var(--bg);
 
-  background-size:
-    auto,
-    70px 70px,
-    70px 70px,
-    auto,
-    auto,
-    620px auto,
-    auto;
+background-size:
+  auto,
+  70px 70px,
+  70px 70px,
+  auto,
+  auto,
+  560px auto,
+  auto;
 
-  background-position:
-    center,
-    center,
-    center,
-    center,
-    center,
-    center 115px,
-    center;
+background-position:
+  center,
+  center,
+  center,
+  center,
+  center,
+  center 40px,
+  center;
 
   background-repeat:
     no-repeat,
