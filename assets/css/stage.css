@@ -38,8 +38,8 @@ background-size:
   70px 70px,
   auto,
   auto,
-  560px auto,
-  auto;
+  390px auto,
+  auto !important;
 
 background-position:
   center,
@@ -47,8 +47,8 @@ background-position:
   center,
   center,
   center,
-  center 40px,
-  center;
+  center 95px,
+  center !important;
 
   background-repeat:
     no-repeat,
