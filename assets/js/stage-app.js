@@ -420,7 +420,7 @@ function ensureBulkModal() {
       <div class="bulk-modal-card">
         <button type="button" class="bulk-modal-close" onclick="window.closeBulkStageModal()">×</button>
 
-        <p class="bulk-modal-kicker">Ajout en masse</p>
+        <p class="bulk-modal-kicker">Gestion des Stages</p>
         <h2 id="bulkStageTitle">Ajouter une liste</h2>
 
         <p class="bulk-modal-text">
