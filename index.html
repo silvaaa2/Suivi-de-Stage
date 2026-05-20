@@ -72,12 +72,22 @@
     <div class="stage-layout">
 
       <section class="stage-card stage-companies-card">
-        <div class="card-head">
-          <div>
-            <p class="kicker">Entreprises</p>
-            <h2>Validation des ID Unique</h2>
-          </div>
-        </div>
+<div class="card-head card-head-with-action">
+  <div>
+    <p class="kicker">Entreprises</p>
+    <h2>Validation des ID Unique</h2>
+  </div>
+
+  <button
+    type="button"
+    id="resetWeekBtn"
+    class="reset-week-btn"
+    hidden
+    onclick="window.resetStageWeek()"
+  >
+    Réinitialiser semaine
+  </button>
+</div>
 
         <div id="companyGrid" class="company-grid">
           <div class="loading-box">Chargement des stages...</div>
