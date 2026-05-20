@@ -409,7 +409,7 @@ function renderExamParticipants() {
       <input
         id="stageSearchInput"
         type="text"
-        placeholder="Rechercher un nom ou ID Unique..."
+        placeholder="Nom ou ID Unique..."
         autocomplete="off"
       >
 
