@@ -240,6 +240,10 @@ function getStatusLabel(status) {
   }
 }
 
+/* =========================================================
+   RECHERCHE EXAMENS À DROITE
+========================================================= */
+
 function getStageSearchMatches(query) {
   const rawQuery = String(query || "").trim();
   const normalizedTextQuery = normalizeSearchText(rawQuery);
@@ -248,31 +252,6 @@ function getStageSearchMatches(query) {
   if (!normalizedTextQuery && !normalizedIdQuery) return [];
 
   const results = [];
-  const usedKeys = new Set();
-
-  stageValidations.forEach(stage => {
-    const stageId = normalizeIdUnique(stage.idUnique || "");
-    const companyName = stage.companyName || getStageCompanyForId(stage.normalizedIdUnique) || "Entreprise inconnue";
-
-    const matchId =
-      normalizedIdQuery &&
-      (stageId.includes(normalizedIdQuery) || String(stage.idUnique || "").includes(rawQuery));
-
-    if (!matchId) return;
-
-    const participant = examParticipants.find(item => item.normalizedIdUnique === stage.normalizedIdUnique);
-    const key = `stage-${stage.firebaseId}`;
-
-    usedKeys.add(key);
-    results.push({
-      key,
-      idUnique: stage.idUnique || stage.normalizedIdUnique,
-      studentName: participant?.studentName || "Nom non renseigné",
-      companyName,
-      hasStage: true,
-      source: participant ? "ID trouvé avec candidat" : "ID trouvé"
-    });
-  });
 
   examParticipants.forEach(participant => {
     const participantName = normalizeSearchText(participant.studentName || "");
@@ -285,22 +264,21 @@ function getStageSearchMatches(query) {
 
     const companyName = getStageCompanyForId(participant.normalizedIdUnique);
     const hasStage = Boolean(companyName);
-    const key = `participant-${participant.firebaseId}`;
-
-    if (usedKeys.has(key)) return;
+    const statusLabel = getStatusLabel(participant.status);
 
     results.push({
-      key,
+      key: participant.firebaseId,
       idUnique: participant.idUnique,
       studentName: participant.studentName,
       companyName: companyName || "Aucun stage",
       hasStage,
-      source: hasStage ? "Candidat trouvé" : "Candidat sans stage"
+      status: statusLabel,
+      score: `${participant.totalScore} / ${participant.maxScore}`,
+      source: "Examen trouvé"
     });
   });
 
   results.sort((a, b) => {
-    if (a.hasStage !== b.hasStage) return a.hasStage ? -1 : 1;
     return String(a.studentName).localeCompare(String(b.studentName), "fr");
   });
 
@@ -314,11 +292,7 @@ function renderStageSearchResults(query) {
   const rawQuery = String(query || "").trim();
 
   if (!rawQuery) {
-    resultBox.innerHTML = `
-      <div class="stage-search-empty">
-        Écris un ID Unique ou un nom pour chercher dans les stages et examens.
-      </div>
-    `;
+    resultBox.innerHTML = "";
     return;
   }
 
@@ -327,7 +301,7 @@ function renderStageSearchResults(query) {
   if (!matches.length) {
     resultBox.innerHTML = `
       <div class="stage-search-empty no-result">
-        Aucun résultat pour “${escapeHtml(rawQuery)}”.
+        Aucun examen trouvé pour “${escapeHtml(rawQuery)}”.
       </div>
     `;
     return;
@@ -337,7 +311,7 @@ function renderStageSearchResults(query) {
     <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}">
       <div>
         <strong>${escapeHtml(item.studentName)}</strong>
-        <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.source)}</span>
+        <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.score)} · ${escapeHtml(item.status)}</span>
       </div>
 
       <em>${item.hasStage ? "✅" : "❌"} ${escapeHtml(item.companyName)}</em>
@@ -359,39 +333,24 @@ function bindStageSearch() {
   renderStageSearchResults(currentStageSearch);
 }
 
+/* =========================================================
+   RENDER ENTREPRISES
+========================================================= */
+
 function renderCompanies() {
-  const searchPanel = `
-    <div class="stage-search-panel">
-      <div class="stage-search-head">
-        <div>
-          <p class="kicker">Recherche</p>
-          <h3>Trouver un stagiaire</h3>
-          <p>Recherchez par ID Unique ou par nom pour savoir dans quel garage il est.</p>
-        </div>
-
-        ${currentUserRole === "prof" ? `
-          <button
-            type="button"
-            class="reset-week-btn"
-            onclick="window.resetStageWeek()"
-          >
-            Réinitialiser semaine
-          </button>
-        ` : ""}
-      </div>
-
-      <div class="stage-search-box">
-        <input
-          id="stageSearchInput"
-          type="text"
-          placeholder="Ex: 322644 ou Marc Carter..."
-          autocomplete="off"
+  const resetButton = currentUserRole === "prof"
+    ? `
+      <div class="stage-reset-zone">
+        <button
+          type="button"
+          class="reset-week-btn"
+          onclick="window.resetStageWeek()"
         >
+          Réinitialiser semaine
+        </button>
       </div>
-
-      <div id="stageSearchResults" class="stage-search-results"></div>
-    </div>
-  `;
+    `
+    : "";
 
   const companiesHtml = COMPANIES.map(company => {
     const entries = getStagesByCompany(company.id);
@@ -447,19 +406,41 @@ function renderCompanies() {
     `;
   }).join("");
 
-  companyGrid.innerHTML = searchPanel + companiesHtml;
+  companyGrid.innerHTML = resetButton + companiesHtml;
 
   ensureBulkModal();
-  bindStageSearch();
 }
 
+/* =========================================================
+   RENDER EXAMENS
+========================================================= */
+
 function renderExamParticipants() {
+  const searchBox = `
+    <div class="exam-search-panel">
+      <p class="kicker">Recherche</p>
+
+      <input
+        id="stageSearchInput"
+        type="text"
+        placeholder="Rechercher un nom ou ID Unique..."
+        autocomplete="off"
+      >
+
+      <div id="stageSearchResults" class="stage-search-results"></div>
+    </div>
+  `;
+
   if (!examParticipants.length) {
     examList.innerHTML = `
+      ${searchBox}
+
       <div class="loading-box">
         Aucun examen à cet instant.
       </div>
     `;
+
+    bindStageSearch();
     return;
   }
 
@@ -518,10 +499,17 @@ function renderExamParticipants() {
   }).join("");
 
   examList.innerHTML = `
+    ${searchBox}
     ${deleteAllButton}
     ${rowsHtml}
   `;
+
+  bindStageSearch();
 }
+
+/* =========================================================
+   AJOUT LISTE
+========================================================= */
 
 async function addStageValidationsBulk(companyId, ids) {
   const company = COMPANIES.find(item => item.id === companyId);
