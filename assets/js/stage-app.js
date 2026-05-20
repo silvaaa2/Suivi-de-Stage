@@ -128,6 +128,11 @@ function showDashboard() {
   dashboard.hidden = false;
   refreshBtn.hidden = false;
   logoutBtn.hidden = false;
+
+  const resetWeekBtn = document.getElementById("resetWeekBtn");
+  if (resetWeekBtn) {
+    resetWeekBtn.hidden = currentUserRole !== "prof";
+  }
 }
 
 async function getUserRole(user) {
@@ -240,10 +245,6 @@ function getStatusLabel(status) {
   }
 }
 
-/* =========================================================
-   RECHERCHE EXAMENS À DROITE
-========================================================= */
-
 function getStageSearchMatches(query) {
   const rawQuery = String(query || "").trim();
   const normalizedTextQuery = normalizeSearchText(rawQuery);
@@ -273,19 +274,49 @@ function getStageSearchMatches(query) {
       companyName: companyName || "Aucun stage",
       hasStage,
       status: statusLabel,
-      score: `${participant.totalScore} / ${participant.maxScore}`,
-      source: "Examen trouvé"
+      score: `${participant.totalScore} / ${participant.maxScore}`
     });
   });
 
-  results.sort((a, b) => {
-    return String(a.studentName).localeCompare(String(b.studentName), "fr");
-  });
+  results.sort((a, b) => String(a.studentName).localeCompare(String(b.studentName), "fr"));
 
   return results.slice(0, 12);
 }
 
 function renderStageSearchResults(query) {
+  const resultBox = document.getElementById("stageSearchResults");
+  if (!resultBox) return;
+
+  const rawQuery = String(query || "").trim();
+
+  if (!rawQuery) {
+    resultBox.innerHTML = `
+      <div class="stage-search-empty">
+        Écris un ID Unique ou un nom pour chercher dans les stages et examens.
+      </div>
+    `;
+    return;
+  }
+
+  const matches = getStageSearchMatches(rawQuery);
+
+  if (!matches.length) {
+    resultBox.innerHTML = `
+      <div class="stage-search-empty no-result">
+        Aucun résultat pour “${escapeHtml(rawQuery)}”.
+      </div>
+    `;
+    return;
+  }
+
+  resultBox.innerHTML = matches.map(item => `
+    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}">
+      <div>
+        <strong>${escapeHtml(item.studentName)}</strong>
+        <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.source)}</span>
+      </div>
+
+      <em>${item.hafunction renderStageSearchResults(query) {
   const resultBox = document.getElementById("stageSearchResults");
   if (!resultBox) return;
 
@@ -301,43 +332,7 @@ function renderStageSearchResults(query) {
   if (!matches.length) {
     resultBox.innerHTML = `
       <div class="stage-search-empty no-result">
-        Aucun examen trouvé pour “${escapeHtml(rawQuery)}”.
-      </div>
-    `;
-    return;
-  }
-
-  resultBox.innerHTML = matches.map(item => `
-    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}">
-      <div>
-        <strong>${escapeHtml(item.studentName)}</strong>
-        <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.score)} · ${escapeHtml(item.status)}</span>
-      </div>
-
-      <em>${item.hasStage ? "✅" : "❌"} ${escapeHtml(item.companyName)}</em>
-    </div>
-  `).join("");
-}
-
-function bindStageSearch() {
-  const input = document.getElementById("stageSearchInput");
-  if (!input) return;
-
-  input.value = currentStageSearch;
-
-  input.addEventListener("input", () => {
-    currentStageSearch = input.value;
-    renderStageSearchResults(currentStageSearch);
-  });
-
-  renderStageSearchResults(currentStageSearch);
-}
-
-/* =========================================================
-   RENDER ENTREPRISES
-========================================================= */
-
-function renderCompanies() {
+        Aucun examefunction renderCompanies() {
   const companiesHtml = COMPANIES.map(company => {
     const entries = getStagesByCompany(company.id);
 
@@ -397,11 +392,33 @@ function renderCompanies() {
   ensureBulkModal();
 }
 
-/* =========================================================
-   RENDER EXAMENS
-========================================================= */
+function renderExamParticipants   Aucun examen à cet instant.
+      </div>
+    `;
+    return;
+  }
 
-function renderExamParticipants() {
+  const deleteAllButton = currentUserRole === "prof"
+    ? `
+      <div class="exam-list-actions">
+        <button
+          type="button"
+          class="delete-all-exams-btn"
+          onclick="window.deleteAllExamParticipantsFromStage()"
+        >
+          Supprimer tout
+        </button>
+      </div>
+    `
+    : "";
+
+  const rowsHtml = examParticipants.map(participant => {
+    const hasStage = hasStageForId(participant.normalizedIdUnique);
+    const companyName = getStageCompanyForId(participant.normalizedIdUnique);
+    const statusLabel = getStatusLabel(participant.status);
+
+    const safeDocIdHtml = escapeHtml(participant.firebaseId);
+    const safeDocIdJs = escapeJsString(participant.firebaseId);function renderExamParticipants() {
   const searchBox = `
     <div class="exam-search-panel">
       <p class="kicker">Recherche</p>
@@ -493,41 +510,7 @@ function renderExamParticipants() {
   bindStageSearch();
 }
 
-/* =========================================================
-   AJOUT LISTE
-========================================================= */
-
-async function addStageValidationsBulk(companyId, ids) {
-  const company = COMPANIES.find(item => item.id === companyId);
-  if (!company) return { added: 0, skipped: 0 };
-
-  const cleanIds = parseBulkIds(ids);
-  let added = 0;
-  let skipped = 0;
-
-  for (const idUnique of cleanIds) {
-    const normalizedIdUnique = normalizeIdUnique(idUnique);
-
-    const alreadyExists = stageValidations.some(item => {
-      return item.companyId === companyId && item.normalizedIdUnique === normalizedIdUnique;
-    });
-
-    if (alreadyExists) {
-      skipped++;
-      continue;
-    }
-
-    const docId = buildStageDocId(companyId, normalizedIdUnique);
-    const ref = doc(db, STAGE_COLLECTION, docId);
-
-    await setDoc(ref, {
-      idUnique: String(idUnique).trim(),
-      normalizedIdUnique,
-      companyId: company.id,
-      companyName: company.name,
-      status: "approved",
-      addedBy: auth.currentUser?.email || "compte stage",
-      addedByRole: currentUserRole || "unknown",
+async function addStageValidationsBulkRole || "unknown",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }, { merge: true });
