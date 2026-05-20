@@ -338,20 +338,6 @@ function bindStageSearch() {
 ========================================================= */
 
 function renderCompanies() {
-  const resetButton = currentUserRole === "prof"
-    ? `
-      <div class="stage-reset-zone">
-        <button
-          type="button"
-          class="reset-week-btn"
-          onclick="window.resetStageWeek()"
-        >
-          Réinitialiser semaine
-        </button>
-      </div>
-    `
-    : "";
-
   const companiesHtml = COMPANIES.map(company => {
     const entries = getStagesByCompany(company.id);
 
@@ -378,7 +364,7 @@ function renderCompanies() {
     return `
       <article class="company-column">
         <div class="company-head">${escapeHtml(company.name)}</div>
-        <div class="company-subhead">${entries.length} ID Unique</div>
+        <div class="company-subhead">ID Unique</div>
 
         <div class="company-actions">
           <button
@@ -406,7 +392,7 @@ function renderCompanies() {
     `;
   }).join("");
 
-  companyGrid.innerHTML = resetButton + companiesHtml;
+  companyGrid.innerHTML = companiesHtml;
 
   ensureBulkModal();
 }
