@@ -245,6 +245,10 @@ function getStatusLabel(status) {
   }
 }
 
+/* =========================================================
+   RECHERCHE EXAMENS À DROITE
+========================================================= */
+
 function getStageSearchMatches(query) {
   const rawQuery = String(query || "").trim();
   const normalizedTextQuery = normalizeSearchText(rawQuery);
@@ -278,45 +282,13 @@ function getStageSearchMatches(query) {
     });
   });
 
-  results.sort((a, b) => String(a.studentName).localeCompare(String(b.studentName), "fr"));
+  results.sort((a, b) => {
+    return String(a.studentName).localeCompare(String(b.studentName), "fr");
+  });
 
   return results.slice(0, 12);
 }
-
 function renderStageSearchResults(query) {
-  const resultBox = document.getElementById("stageSearchResults");
-  if (!resultBox) return;
-
-  const rawQuery = String(query || "").trim();
-
-  if (!rawQuery) {
-    resultBox.innerHTML = `
-      <div class="stage-search-empty">
-        Écris un ID Unique ou un nom pour chercher dans les stages et examens.
-      </div>
-    `;
-    return;
-  }
-
-  const matches = getStageSearchMatches(rawQuery);
-
-  if (!matches.length) {
-    resultBox.innerHTML = `
-      <div class="stage-search-empty no-result">
-        Aucun résultat pour “${escapeHtml(rawQuery)}”.
-      </div>
-    `;
-    return;
-  }
-
-  resultBox.innerHTML = matches.map(item => `
-    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}">
-      <div>
-        <strong>${escapeHtml(item.studentName)}</strong>
-        <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.source)}</span>
-      </div>
-
-      <em>${item.hafunction renderStageSearchResults(query) {
   const resultBox = document.getElementById("stageSearchResults");
   if (!resultBox) return;
 
@@ -332,7 +304,43 @@ function renderStageSearchResults(query) {
   if (!matches.length) {
     resultBox.innerHTML = `
       <div class="stage-search-empty no-result">
-        Aucun examefunction renderCompanies() {
+        Aucun examen trouvé pour “${escapeHtml(rawQuery)}”.
+      </div>
+    `;
+    return;
+  }
+
+  resultBox.innerHTML = matches.map(item => `
+    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}">
+      <div>
+        <strong>${escapeHtml(item.studentName)}</strong>
+        <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.score)} · ${escapeHtml(item.status)}</span>
+      </div>
+
+      <em>${item.hasStage ? "✅" : "❌"} ${escapeHtml(item.companyName)}</em>
+    </div>
+  `).join("");
+}
+
+function bindStageSearch() {
+  const input = document.getElementById("stageSearchInput");
+  if (!input) return;
+
+  input.value = currentStageSearch;
+
+  input.addEventListener("input", () => {
+    currentStageSearch = input.value;
+    renderStageSearchResults(currentStageSearch);
+  });
+
+  renderStageSearchResults(currentStageSearch);
+}
+
+/* =========================================================
+   RENDER ENTREPRISES
+========================================================= */
+
+function renderCompanies() {
   const companiesHtml = COMPANIES.map(company => {
     const entries = getStagesByCompany(company.id);
 
@@ -392,33 +400,11 @@ function renderStageSearchResults(query) {
   ensureBulkModal();
 }
 
-function renderExamParticipants   Aucun examen à cet instant.
-      </div>
-    `;
-    return;
-  }
+/* =========================================================
+   RENDER EXAMENS
+========================================================= */
 
-  const deleteAllButton = currentUserRole === "prof"
-    ? `
-      <div class="exam-list-actions">
-        <button
-          type="button"
-          class="delete-all-exams-btn"
-          onclick="window.deleteAllExamParticipantsFromStage()"
-        >
-          Supprimer tout
-        </button>
-      </div>
-    `
-    : "";
-
-  const rowsHtml = examParticipants.map(participant => {
-    const hasStage = hasStageForId(participant.normalizedIdUnique);
-    const companyName = getStageCompanyForId(participant.normalizedIdUnique);
-    const statusLabel = getStatusLabel(participant.status);
-
-    const safeDocIdHtml = escapeHtml(participant.firebaseId);
-    const safeDocIdJs = escapeJsString(participant.firebaseId);function renderExamParticipants() {
+function renderExamParticipants() {
   const searchBox = `
     <div class="exam-search-panel">
       <p class="kicker">Recherche</p>
@@ -470,6 +456,10 @@ function renderExamParticipants   Aucun examen à cet instant.
     const safeDocIdJs = escapeJsString(participant.firebaseId);
     const safeStudentNameJs = escapeJsString(participant.studentName);
 
+    const badgeText = hasStage
+      ? "✅ " + escapeHtml(companyName)
+      : "Aucun stage";
+
     const deleteButton = currentUserRole === "prof"
       ? `
         <button
@@ -493,7 +483,7 @@ function renderExamParticipants   Aucun examen à cet instant.
         </div>
 
         <span class="badge ${hasStage ? "ok" : "no"}">
-          ${hasStage ? `✅ ${escapeHtml(companyName)}` : "Aucun stage"}
+          ${badgeText}
         </span>
 
         ${deleteButton}
@@ -510,7 +500,41 @@ function renderExamParticipants   Aucun examen à cet instant.
   bindStageSearch();
 }
 
-async function addStageValidationsBulkRole || "unknown",
+/* =========================================================
+   AJOUT LISTE
+========================================================= */
+
+async function addStageValidationsBulk(companyId, ids) {
+  const company = COMPANIES.find(item => item.id === companyId);
+  if (!company) return { added: 0, skipped: 0 };
+
+  const cleanIds = parseBulkIds(ids);
+  let added = 0;
+  let skipped = 0;
+
+  for (const idUnique of cleanIds) {
+    const normalizedIdUnique = normalizeIdUnique(idUnique);
+
+    const alreadyExists = stageValidations.some(item => {
+      return item.companyId === companyId && item.normalizedIdUnique === normalizedIdUnique;
+    });
+
+    if (alreadyExists) {
+      skipped++;
+      continue;
+    }
+
+    const docId = buildStageDocId(companyId, normalizedIdUnique);
+    const ref = doc(db, STAGE_COLLECTION, docId);
+
+    await setDoc(ref, {
+      idUnique: String(idUnique).trim(),
+      normalizedIdUnique,
+      companyId: company.id,
+      companyName: company.name,
+      status: "approved",
+      addedBy: auth.currentUser?.email || "compte stage",
+      addedByRole: currentUserRole || "unknown",
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp()
     }, { merge: true });
@@ -645,7 +669,6 @@ window.closeBulkStageModal = function() {
     if (textarea) textarea.value = "";
   }, 180);
 };
-
 /* =========================================================
    SUPPRESSION ID / LISTES STAGE
 ========================================================= */
@@ -693,7 +716,10 @@ window.deleteCompanyStageList = async function(companyId) {
     return;
   }
 
-  const confirmed = confirm(`Supprimer toute la liste de ${company.name} ?\n\n${entries.length} ID seront supprimés.`);
+  const confirmed = confirm(
+    `Supprimer toute la liste de ${company.name} ?\n\n${entries.length} ID seront supprimés.`
+  );
+
   if (!confirmed) return;
 
   try {
@@ -850,6 +876,10 @@ window.resetStageWeek = async function() {
   }
 };
 
+/* =========================================================
+   REFRESH
+========================================================= */
+
 async function refreshAll() {
   companyGrid.innerHTML = `<div class="loading-box">Chargement des stages...</div>`;
   examList.innerHTML = `<div class="loading-box">Chargement des participants...</div>`;
@@ -860,6 +890,10 @@ async function refreshAll() {
   renderCompanies();
   renderExamParticipants();
 }
+
+/* =========================================================
+   LOGIN
+========================================================= */
 
 loginForm.addEventListener("submit", async event => {
   event.preventDefault();
