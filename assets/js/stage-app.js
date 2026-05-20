@@ -61,12 +61,22 @@ const examList = document.getElementById("examList");
 let stageValidations = [];
 let examParticipants = [];
 let currentUserRole = null;
+let currentStageSearch = "";
 
 function normalizeIdUnique(value) {
   return String(value || "")
     .trim()
     .toLowerCase()
     .replace(/\s+/g, "");
+}
+
+function normalizeSearchText(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
 }
 
 function escapeHtml(value) {
@@ -230,8 +240,160 @@ function getStatusLabel(status) {
   }
 }
 
+function getStageSearchMatches(query) {
+  const rawQuery = String(query || "").trim();
+  const normalizedTextQuery = normalizeSearchText(rawQuery);
+  const normalizedIdQuery = normalizeIdUnique(rawQuery);
+
+  if (!normalizedTextQuery && !normalizedIdQuery) return [];
+
+  const results = [];
+  const usedKeys = new Set();
+
+  stageValidations.forEach(stage => {
+    const stageId = normalizeIdUnique(stage.idUnique || "");
+    const companyName = stage.companyName || getStageCompanyForId(stage.normalizedIdUnique) || "Entreprise inconnue";
+
+    const matchId =
+      normalizedIdQuery &&
+      (stageId.includes(normalizedIdQuery) || String(stage.idUnique || "").includes(rawQuery));
+
+    if (!matchId) return;
+
+    const participant = examParticipants.find(item => item.normalizedIdUnique === stage.normalizedIdUnique);
+    const key = `stage-${stage.firebaseId}`;
+
+    usedKeys.add(key);
+    results.push({
+      key,
+      idUnique: stage.idUnique || stage.normalizedIdUnique,
+      studentName: participant?.studentName || "Nom non renseigné",
+      companyName,
+      hasStage: true,
+      source: participant ? "ID trouvé avec candidat" : "ID trouvé"
+    });
+  });
+
+  examParticipants.forEach(participant => {
+    const participantName = normalizeSearchText(participant.studentName || "");
+    const participantId = normalizeIdUnique(participant.idUnique || "");
+
+    const matchName = normalizedTextQuery && participantName.includes(normalizedTextQuery);
+    const matchId = normalizedIdQuery && participantId.includes(normalizedIdQuery);
+
+    if (!matchName && !matchId) return;
+
+    const companyName = getStageCompanyForId(participant.normalizedIdUnique);
+    const hasStage = Boolean(companyName);
+    const key = `participant-${participant.firebaseId}`;
+
+    if (usedKeys.has(key)) return;
+
+    results.push({
+      key,
+      idUnique: participant.idUnique,
+      studentName: participant.studentName,
+      companyName: companyName || "Aucun stage",
+      hasStage,
+      source: hasStage ? "Candidat trouvé" : "Candidat sans stage"
+    });
+  });
+
+  results.sort((a, b) => {
+    if (a.hasStage !== b.hasStage) return a.hasStage ? -1 : 1;
+    return String(a.studentName).localeCompare(String(b.studentName), "fr");
+  });
+
+  return results.slice(0, 12);
+}
+
+function renderStageSearchResults(query) {
+  const resultBox = document.getElementById("stageSearchResults");
+  if (!resultBox) return;
+
+  const rawQuery = String(query || "").trim();
+
+  if (!rawQuery) {
+    resultBox.innerHTML = `
+      <div class="stage-search-empty">
+        Écris un ID Unique ou un nom pour chercher dans les stages et examens.
+      </div>
+    `;
+    return;
+  }
+
+  const matches = getStageSearchMatches(rawQuery);
+
+  if (!matches.length) {
+    resultBox.innerHTML = `
+      <div class="stage-search-empty no-result">
+        Aucun résultat pour “${escapeHtml(rawQuery)}”.
+      </div>
+    `;
+    return;
+  }
+
+  resultBox.innerHTML = matches.map(item => `
+    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}">
+      <div>
+        <strong>${escapeHtml(item.studentName)}</strong>
+        <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.source)}</span>
+      </div>
+
+      <em>${item.hasStage ? "✅" : "❌"} ${escapeHtml(item.companyName)}</em>
+    </div>
+  `).join("");
+}
+
+function bindStageSearch() {
+  const input = document.getElementById("stageSearchInput");
+  if (!input) return;
+
+  input.value = currentStageSearch;
+
+  input.addEventListener("input", () => {
+    currentStageSearch = input.value;
+    renderStageSearchResults(currentStageSearch);
+  });
+
+  renderStageSearchResults(currentStageSearch);
+}
+
 function renderCompanies() {
-  companyGrid.innerHTML = COMPANIES.map(company => {
+  const searchPanel = `
+    <div class="stage-search-panel">
+      <div class="stage-search-head">
+        <div>
+          <p class="kicker">Recherche</p>
+          <h3>Trouver un stagiaire</h3>
+          <p>Recherchez par ID Unique ou par nom pour savoir dans quel garage il est.</p>
+        </div>
+
+        ${currentUserRole === "prof" ? `
+          <button
+            type="button"
+            class="reset-week-btn"
+            onclick="window.resetStageWeek()"
+          >
+            Réinitialiser semaine
+          </button>
+        ` : ""}
+      </div>
+
+      <div class="stage-search-box">
+        <input
+          id="stageSearchInput"
+          type="text"
+          placeholder="Ex: 322644 ou Marc Carter..."
+          autocomplete="off"
+        >
+      </div>
+
+      <div id="stageSearchResults" class="stage-search-results"></div>
+    </div>
+  `;
+
+  const companiesHtml = COMPANIES.map(company => {
     const entries = getStagesByCompany(company.id);
 
     const rowsHtml = entries.length
@@ -257,7 +419,7 @@ function renderCompanies() {
     return `
       <article class="company-column">
         <div class="company-head">${escapeHtml(company.name)}</div>
-        <div class="company-subhead">ID Unique</div>
+        <div class="company-subhead">${entries.length} ID Unique</div>
 
         <div class="company-actions">
           <button
@@ -285,7 +447,10 @@ function renderCompanies() {
     `;
   }).join("");
 
+  companyGrid.innerHTML = searchPanel + companiesHtml;
+
   ensureBulkModal();
+  bindStageSearch();
 }
 
 function renderExamParticipants() {
@@ -643,8 +808,14 @@ window.deleteAllExamParticipantsFromStage = async function() {
     return;
   }
 
-  const confirmed = confirm(`Supprimer tous les examens affichés ?\n\n${examParticipants.length} participant(s) seront masqués.`);
-  if (!confirmed) return;
+  const typed = prompt(
+    `Action sensible.\n\n${examParticipants.length} participant(s) seront masqués côté examens.\n\nTape RESET pour confirmer.`
+  );
+
+  if (typed !== "RESET") {
+    alert("Suppression annulée.");
+    return;
+  }
 
   try {
     await Promise.all(
@@ -665,6 +836,60 @@ window.deleteAllExamParticipantsFromStage = async function() {
   } catch (error) {
     console.error("Erreur suppression tous examens :", error);
     alert(`Erreur suppression examens : ${error.code || error.message}`);
+  }
+};
+
+/* =========================================================
+   RESET SEMAINE PROF
+========================================================= */
+
+window.resetStageWeek = async function() {
+  if (currentUserRole !== "prof") {
+    alert("Seul un compte professeur peut réinitialiser la semaine.");
+    return;
+  }
+
+  const totalStages = stageValidations.length;
+  const totalExams = examParticipants.length;
+
+  if (!totalStages && !totalExams) {
+    alert("Rien à réinitialiser.");
+    return;
+  }
+
+  const typed = prompt(
+    `⚠️ RÉINITIALISATION SEMAINE\n\nCette action va :\n- supprimer ${totalStages} ID Unique de stage ;\n- masquer ${totalExams} examen(s).\n\nTape RESET pour confirmer.`
+  );
+
+  if (typed !== "RESET") {
+    alert("Réinitialisation annulée.");
+    return;
+  }
+
+  try {
+    const stageDeletes = stageValidations.map(item => {
+      return deleteDoc(doc(db, STAGE_COLLECTION, item.firebaseId));
+    });
+
+    const examArchives = examParticipants.map(participant => {
+      const ref = doc(db, EXAM_COLLECTION, participant.firebaseId);
+
+      return setDoc(ref, {
+        archived: true,
+        archivedBy: auth.currentUser?.email || "professeur inconnu",
+        archivedAt: serverTimestamp(),
+        resetWeek: true
+      }, { merge: true });
+    });
+
+    await Promise.all([...stageDeletes, ...examArchives]);
+
+    alert("Semaine réinitialisée ✅");
+    currentStageSearch = "";
+    await refreshAll();
+  } catch (error) {
+    console.error("Erreur réinitialisation semaine :", error);
+    alert(`Erreur réinitialisation : ${error.code || error.message}`);
   }
 };
 
