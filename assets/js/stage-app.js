@@ -35,6 +35,9 @@ const db = getFirestore(app);
 const STAGE_COLLECTION = "stageValidations";
 const EXAM_COLLECTION = "examAnswerStatuses";
 
+const EFFECTIF_SPREADSHEET_ID = "1DRZwLrNXK_kkxpSsaPn_m7XDJ5v0_5iGq-8FoWTQRYU";
+const EFFECTIF_GID = "460642936"; // Feuille Mécanique
+
 const COMPANIES = [
   { id: "bennys", name: "Benny's" },
   { id: "lsc", name: "LSC" },
@@ -60,8 +63,12 @@ const examList = document.getElementById("examList");
 
 let stageValidations = [];
 let examParticipants = [];
+let effectifRows = [];
+
 let currentUserRole = null;
 let currentStageSearch = "";
+let currentEffectifSearch = "";
+let currentRightPanel = "examens";
 
 function normalizeIdUnique(value) {
   return String(value || "")
@@ -246,7 +253,7 @@ function getStatusLabel(status) {
 }
 
 /* =========================================================
-   RECHERCHE EXAMENS À DROITE
+   RECHERCHE EXAMENS
 ========================================================= */
 
 function getStageSearchMatches(query) {
@@ -288,6 +295,7 @@ function getStageSearchMatches(query) {
 
   return results.slice(0, 12);
 }
+
 function renderStageSearchResults(query) {
   const resultBox = document.getElementById("stageSearchResults");
   if (!resultBox) return;
@@ -335,6 +343,299 @@ function bindStageSearch() {
 
   renderStageSearchResults(currentStageSearch);
 }
+
+/* =========================================================
+   EFFECTIF GOOGLE SHEETS
+========================================================= */
+
+function buildEffectifCsvUrl() {
+  return `https://docs.google.com/spreadsheets/d/${EFFECTIF_SPREADSHEET_ID}/export?format=csv&gid=${EFFECTIF_GID}`;
+}
+
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = "";
+  let insideQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
+
+    if (char === '"' && insideQuotes && nextChar === '"') {
+      value += '"';
+      i++;
+      continue;
+    }
+
+    if (char === '"') {
+      insideQuotes = !insideQuotes;
+      continue;
+    }
+
+    if (char === "," && !insideQuotes) {
+      row.push(value);
+      value = "";
+      continue;
+    }
+
+    if ((char === "\n" || char === "\r") && !insideQuotes) {
+      if (char === "\r" && nextChar === "\n") i++;
+
+      row.push(value);
+
+      if (row.some(cell => String(cell).trim() !== "")) {
+        rows.push(row);
+      }
+
+      row = [];
+      value = "";
+      continue;
+    }
+
+    value += char;
+  }
+
+  row.push(value);
+
+  if (row.some(cell => String(cell).trim() !== "")) {
+    rows.push(row);
+  }
+
+  return rows;
+}
+
+function normalizeEffectifRows(rows) {
+  if (!rows.length) return [];
+
+  const firstA = normalizeSearchText(rows[0]?.[0] || "");
+  const firstB = normalizeSearchText(rows[0]?.[1] || "");
+
+  const hasHeader =
+    firstA.includes("id") ||
+    firstA.includes("unique") ||
+    firstB.includes("nom") ||
+    firstB.includes("prenom");
+
+  const dataRows = hasHeader ? rows.slice(1) : rows;
+
+  return dataRows
+    .map(row => {
+      const idUnique = String(row[0] || "").trim();
+      const studentName = String(row[1] || "").trim();
+
+      return {
+        idUnique,
+        normalizedIdUnique: normalizeIdUnique(idUnique),
+        studentName
+      };
+    })
+    .filter(item => item.idUnique || item.studentName);
+}
+
+async function loadEffectifRows() {
+  if (effectifRows.length) return effectifRows;
+
+  const response = await fetch(buildEffectifCsvUrl());
+
+  if (!response.ok) {
+    throw new Error(`Erreur Google Sheets : ${response.status}`);
+  }
+
+  const csvText = await response.text();
+  const rows = parseCsv(csvText);
+
+  effectifRows = normalizeEffectifRows(rows);
+
+  return effectifRows;
+}
+
+function getEffectifMatches() {
+  const search = normalizeSearchText(currentEffectifSearch);
+  const searchId = normalizeIdUnique(currentEffectifSearch);
+
+  if (!search && !searchId) return effectifRows;
+
+  return effectifRows.filter(item => {
+    const name = normalizeSearchText(item.studentName);
+    const id = normalizeIdUnique(item.idUnique);
+
+    return name.includes(search) || id.includes(searchId);
+  });
+}
+
+function renderEffectifRows() {
+  const content = document.getElementById("rightPanelContent");
+  if (!content) return;
+
+  const rows = getEffectifMatches();
+
+  if (!rows.length) {
+    content.innerHTML = `
+      <div class="effectif-tools">
+        <div>
+          <p class="kicker">Effectif</p>
+          <h3>0 personne</h3>
+        </div>
+
+        <input
+          id="effectifSearchInput"
+          type="text"
+          placeholder="Rechercher nom ou ID Unique..."
+          value="${escapeHtml(currentEffectifSearch)}"
+          autocomplete="off"
+        >
+      </div>
+
+      <div class="effectif-empty">
+        Aucun résultat dans l’effectif.
+      </div>
+    `;
+
+    bindEffectifSearch();
+    return;
+  }
+
+  content.innerHTML = `
+    <div class="effectif-tools">
+      <div>
+        <p class="kicker">Effectif</p>
+        <h3>${rows.length} personne(s)</h3>
+      </div>
+
+      <input
+        id="effectifSearchInput"
+        type="text"
+        placeholder="Rechercher nom ou ID Unique..."
+        value="${escapeHtml(currentEffectifSearch)}"
+        autocomplete="off"
+      >
+    </div>
+
+    <div class="effectif-list">
+      ${rows.map(item => {
+        const exam = examParticipants.find(participant => {
+          return participant.normalizedIdUnique === item.normalizedIdUnique;
+        });
+
+        const stageCompany = getStageCompanyForId(item.normalizedIdUnique);
+
+        const examText = exam
+          ? `${escapeHtml(exam.totalScore)} / ${escapeHtml(exam.maxScore)} · ${escapeHtml(getStatusLabel(exam.status))}`
+          : "Pas d’examen";
+
+        const examClass = exam ? "ok" : "no";
+
+        const stageText = stageCompany
+          ? `✅ ${escapeHtml(stageCompany)}`
+          : "❌ Aucun stage";
+
+        const stageClass = stageCompany ? "ok" : "no";
+
+        return `
+          <div class="effectif-row">
+            <strong>${escapeHtml(item.idUnique || "ID non renseigné")}</strong>
+
+            <div>
+              <b>${escapeHtml(item.studentName || "Nom non renseigné")}</b>
+              <span>${examText}</span>
+            </div>
+
+            <em class="${examClass}">
+              ${exam ? "✅ Examen" : "❌ Aucun examen"}
+            </em>
+
+            <em class="${stageClass}">
+              ${stageText}
+            </em>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+
+  bindEffectifSearch();
+}
+
+function bindEffectifSearch() {
+  const input = document.getElementById("effectifSearchInput");
+  if (!input) return;
+
+  input.addEventListener("input", () => {
+    currentEffectifSearch = input.value;
+    renderEffectifRows();
+  });
+
+  input.focus();
+
+  const valueLength = input.value.length;
+  input.setSelectionRange(valueLength, valueLength);
+}
+
+async function renderEffectifPanel() {
+  const content = document.getElementById("rightPanelContent");
+  if (!content) return;
+
+  content.innerHTML = `
+    <div class="loading-box">
+      Chargement de l’effectif...
+    </div>
+  `;
+
+  try {
+    await loadEffectifRows();
+    renderEffectifRows();
+  } catch (error) {
+    console.error("Erreur chargement effectif :", error);
+
+    content.innerHTML = `
+      <div class="loading-box">
+        Impossible de charger l’effectif.<br>
+        Vérifie que le Google Sheet est bien public en lecture.
+      </div>
+    `;
+  }
+}
+
+/* =========================================================
+   ONGLETS PANNEAU DROIT
+========================================================= */
+
+function renderRightPanelTabs() {
+  return `
+    <div class="right-panel-tabs">
+      <button
+        type="button"
+        class="${currentRightPanel === "examens" ? "active" : ""}"
+        onclick="window.switchRightPanel('examens')"
+      >
+        Examens
+      </button>
+
+      <button
+        type="button"
+        class="${currentRightPanel === "effectif" ? "active" : ""}"
+        onclick="window.switchRightPanel('effectif')"
+      >
+        Effectif
+      </button>
+    </div>
+
+    <div id="rightPanelContent"></div>
+  `;
+}
+
+window.switchRightPanel = function(panel) {
+  currentRightPanel = panel;
+
+  if (panel === "effectif") {
+    renderExamParticipants();
+    renderEffectifPanel();
+    return;
+  }
+
+  renderExamParticipants();
+};
 
 /* =========================================================
    RENDER ENTREPRISES
@@ -401,10 +702,20 @@ function renderCompanies() {
 }
 
 /* =========================================================
-   RENDER EXAMENS
+   RENDER EXAMENS / EFFECTIF
 ========================================================= */
 
 function renderExamParticipants() {
+  examList.innerHTML = renderRightPanelTabs();
+
+  const content = document.getElementById("rightPanelContent");
+  if (!content) return;
+
+  if (currentRightPanel === "effectif") {
+    renderEffectifPanel();
+    return;
+  }
+
   const searchBox = `
     <div class="exam-search-panel">
       <p class="kicker">Recherche</p>
@@ -421,7 +732,7 @@ function renderExamParticipants() {
   `;
 
   if (!examParticipants.length) {
-    examList.innerHTML = `
+    content.innerHTML = `
       ${searchBox}
 
       <div class="loading-box">
@@ -491,7 +802,7 @@ function renderExamParticipants() {
     `;
   }).join("");
 
-  examList.innerHTML = `
+  content.innerHTML = `
     ${searchBox}
     ${deleteAllButton}
     ${rowsHtml}
@@ -669,6 +980,7 @@ window.closeBulkStageModal = function() {
     if (textarea) textarea.value = "";
   }, 180);
 };
+
 /* =========================================================
    SUPPRESSION ID / LISTES STAGE
 ========================================================= */
@@ -869,6 +1181,8 @@ window.resetStageWeek = async function() {
 
     alert("Semaine réinitialisée ✅");
     currentStageSearch = "";
+    currentEffectifSearch = "";
+    effectifRows = [];
     await refreshAll();
   } catch (error) {
     console.error("Erreur réinitialisation semaine :", error);
@@ -952,6 +1266,7 @@ logoutBtn.addEventListener("click", async () => {
 });
 
 refreshBtn.addEventListener("click", async () => {
+  effectifRows = [];
   await refreshAll();
 });
 
