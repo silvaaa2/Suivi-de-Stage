@@ -35,8 +35,20 @@ const db = getFirestore(app);
 const STAGE_COLLECTION = "stageValidations";
 const EXAM_COLLECTION = "examAnswerStatuses";
 
-const EFFECTIF_SPREADSHEET_ID = "1DRZwLrNXK_kkxpSsaPn_m7XDJ5v0_5iGq-8FoWTQRYU";
-const EFFECTIF_GID = "460642936"; // Feuille Mécanique
+const DEFAULT_EFFECTIF_SPREADSHEET_ID = "1DRZwLrNXK_kkxpSsaPn_m7XDJ5v0_5iGq-8FoWTQRYU";
+const DEFAULT_EFFECTIF_GID = "460642936"; // Feuille Mécanique
+
+const EFFECTIF_LINK_STORAGE_KEY = "stage_effectif_google_sheet_link";
+const EFFECTIF_ID_STORAGE_KEY = "stage_effectif_spreadsheet_id";
+const EFFECTIF_GID_STORAGE_KEY = "stage_effectif_gid";
+
+let effectifSpreadsheetId =
+  localStorage.getItem(EFFECTIF_ID_STORAGE_KEY) ||
+  DEFAULT_EFFECTIF_SPREADSHEET_ID;
+
+let effectifGid =
+  localStorage.getItem(EFFECTIF_GID_STORAGE_KEY) ||
+  DEFAULT_EFFECTIF_GID;
 
 const COMPANIES = [
   { id: "bennys", name: "Benny's" },
@@ -140,6 +152,13 @@ function showDashboard() {
   if (resetWeekBtn) {
     resetWeekBtn.hidden = currentUserRole !== "prof";
   }
+
+  const changeEffectifBtn = document.getElementById("changeEffectifBtn");
+  if (changeEffectifBtn) {
+    changeEffectifBtn.hidden = currentUserRole !== "prof";
+  }
+
+  ensureEffectifLinkModal();
 }
 
 async function getUserRole(user) {
@@ -349,7 +368,84 @@ function bindStageSearch() {
 ========================================================= */
 
 function buildEffectifCsvUrl() {
-  return `https://docs.google.com/spreadsheets/d/${EFFECTIF_SPREADSHEET_ID}/export?format=csv&gid=${EFFECTIF_GID}`;
+  return `https://docs.google.com/spreadsheets/d/${effectifSpreadsheetId}/export?format=csv&gid=${effectifGid}`;
+}
+
+function getCurrentEffectifLink() {
+  return (
+    localStorage.getItem(EFFECTIF_LINK_STORAGE_KEY) ||
+    `https://docs.google.com/spreadsheets/d/${effectifSpreadsheetId}/edit?gid=${effectifGid}#gid=${effectifGid}`
+  );
+}
+
+function extractGoogleSheetInfoFromUrl(value) {
+  const url = String(value || "").trim();
+
+  const spreadsheetMatch = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  const gidMatch = url.match(/[?&#]gid=([0-9]+)/);
+
+  if (!spreadsheetMatch) {
+    return null;
+  }
+
+  return {
+    spreadsheetId: spreadsheetMatch[1],
+    gid: gidMatch ? gidMatch[1] : "0"
+  };
+}
+
+function saveEffectifLinkFromInput() {
+  const input = document.getElementById("effectifLinkInput");
+  if (!input) return;
+
+  const link = input.value.trim();
+  const parsed = extractGoogleSheetInfoFromUrl(link);
+
+  if (!parsed) {
+    alert("Lien Google Sheets invalide. Colle bien le lien complet du Google Sheet.");
+    return;
+  }
+
+  effectifSpreadsheetId = parsed.spreadsheetId;
+  effectifGid = parsed.gid;
+
+  localStorage.setItem(EFFECTIF_LINK_STORAGE_KEY, link);
+  localStorage.setItem(EFFECTIF_ID_STORAGE_KEY, effectifSpreadsheetId);
+  localStorage.setItem(EFFECTIF_GID_STORAGE_KEY, effectifGid);
+
+  effectifRows = [];
+  currentEffectifSearch = "";
+
+  closeEffectifLinkModal();
+
+  if (currentRightPanel === "effectif") {
+    renderEffectifPanel();
+  }
+
+  alert("Lien effectif mis à jour ✅");
+}
+
+function resetEffectifLink() {
+  const confirmed = confirm("Remettre le lien effectif par défaut ?");
+  if (!confirmed) return;
+
+  effectifSpreadsheetId = DEFAULT_EFFECTIF_SPREADSHEET_ID;
+  effectifGid = DEFAULT_EFFECTIF_GID;
+
+  localStorage.removeItem(EFFECTIF_LINK_STORAGE_KEY);
+  localStorage.removeItem(EFFECTIF_ID_STORAGE_KEY);
+  localStorage.removeItem(EFFECTIF_GID_STORAGE_KEY);
+
+  effectifRows = [];
+  currentEffectifSearch = "";
+
+  closeEffectifLinkModal();
+
+  if (currentRightPanel === "effectif") {
+    renderEffectifPanel();
+  }
+
+  alert("Lien effectif réinitialisé ✅");
 }
 
 function parseCsv(text) {
@@ -980,6 +1076,116 @@ window.closeBulkStageModal = function() {
     if (textarea) textarea.value = "";
   }, 180);
 };
+
+/* =========================================================
+   MODAL CHANGER EFFECTIF
+========================================================= */
+
+function ensureEffectifLinkModal() {
+  if (document.getElementById("effectifLinkModal")) return;
+
+  document.body.insertAdjacentHTML("beforeend", `
+    <div id="effectifLinkModal" class="effectif-link-modal-overlay" hidden>
+      <div class="effectif-link-modal-card">
+        <button
+          type="button"
+          class="effectif-link-modal-close"
+          onclick="window.closeEffectifLinkModal()"
+        >
+          ×
+        </button>
+
+        <p class="effectif-link-kicker">Effectif</p>
+        <h2>Changer l’effectif</h2>
+
+        <p class="effectif-link-text">
+          Collez le lien complet du Google Sheet. Le site récupère automatiquement l’ID du fichier et l’onglet sélectionné.
+        </p>
+
+        <label for="effectifLinkInput">Lien Google Sheets</label>
+
+        <textarea
+          id="effectifLinkInput"
+          placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=..."
+        ></textarea>
+
+        <div class="effectif-link-current">
+          <span>Lien actuel :</span>
+          <strong id="effectifCurrentLinkText"></strong>
+        </div>
+
+        <div class="effectif-link-actions">
+          <button
+            type="button"
+            class="effectif-link-reset-btn"
+            onclick="window.resetEffectifLink()"
+          >
+            Réinitialiser
+          </button>
+
+          <button
+            type="button"
+            class="effectif-link-cancel-btn"
+            onclick="window.closeEffectifLinkModal()"
+          >
+            Annuler
+          </button>
+
+          <button
+            type="button"
+            class="effectif-link-save-btn"
+            onclick="window.saveEffectifLinkFromInput()"
+          >
+            Enregistrer
+          </button>
+        </div>
+      </div>
+    </div>
+  `);
+}
+
+window.openEffectifLinkModal = function() {
+  if (currentUserRole !== "prof") {
+    alert("Seul un compte professeur peut changer l’effectif.");
+    return;
+  }
+
+  ensureEffectifLinkModal();
+
+  const modal = document.getElementById("effectifLinkModal");
+  const input = document.getElementById("effectifLinkInput");
+  const currentText = document.getElementById("effectifCurrentLinkText");
+
+  if (!modal || !input || !currentText) return;
+
+  const currentLink = getCurrentEffectifLink();
+
+  input.value = currentLink;
+  currentText.textContent = currentLink;
+
+  modal.hidden = false;
+
+  requestAnimationFrame(() => {
+    modal.classList.add("active");
+    input.focus();
+    input.select();
+  });
+};
+
+window.closeEffectifLinkModal = function() {
+  const modal = document.getElementById("effectifLinkModal");
+
+  if (!modal) return;
+
+  modal.classList.remove("active");
+
+  setTimeout(() => {
+    modal.hidden = true;
+  }, 180);
+};
+
+window.saveEffectifLinkFromInput = saveEffectifLinkFromInput;
+window.resetEffectifLink = resetEffectifLink;
 
 /* =========================================================
    SUPPRESSION ID / LISTES STAGE
