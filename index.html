@@ -8,7 +8,7 @@
   <link rel="icon" type="image/png" href="assets/img/logo.png?v=3">
   <link rel="shortcut icon" type="image/png" href="assets/img/logo.png?v=3">
 
-  <link rel="stylesheet" href="assets/css/stage.css?v=9036">
+  <link rel="stylesheet" href="assets/css/stage.css?v=9037">
 </head>
 
 <body>
@@ -72,22 +72,22 @@
     <div class="stage-layout">
 
       <section class="stage-card stage-companies-card">
-<div class="card-head card-head-with-action">
-  <div>
-    <p class="kicker">Entreprises</p>
-    <h2>Validation des ID Unique</h2>
-  </div>
+        <div class="card-head card-head-with-action">
+          <div>
+            <p class="kicker">Entreprises</p>
+            <h2>Validation des ID Unique</h2>
+          </div>
 
-  <button
-    type="button"
-    id="resetWeekBtn"
-    class="reset-week-btn"
-    hidden
-    onclick="window.resetStageWeek()"
-  >
-    Réinitialiser semaine
-  </button>
-</div>
+          <button
+            type="button"
+            id="resetWeekBtn"
+            class="reset-week-btn"
+            hidden
+            onclick="window.resetStageWeek()"
+          >
+            Réinitialiser semaine
+          </button>
+        </div>
 
         <div id="companyGrid" class="company-grid">
           <div class="loading-box">Chargement des stages...</div>
@@ -95,7 +95,7 @@
       </section>
 
       <section class="stage-card stage-exams-card">
-        <div class="card-head">
+        <div class="card-head card-head-with-action">
           <div>
             <p class="kicker">Examens</p>
             <h2>Participants</h2>
@@ -103,6 +103,16 @@
               Les examens remplis et corrigés seront affichés ici.
             </p>
           </div>
+
+          <button
+            type="button"
+            id="changeEffectifBtn"
+            class="change-effectif-btn"
+            hidden
+            onclick="window.openEffectifLinkModal()"
+          >
+            Changer effectif
+          </button>
         </div>
 
         <div id="examList" class="exam-list">
@@ -117,7 +127,7 @@
 
 </main>
 
-<script type="module" src="assets/js/stage-app.js?v=9036"></script>
+<script type="module" src="assets/js/stage-app.js?v=9037"></script>
 
 </body>
 </html>
