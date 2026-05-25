@@ -1489,3 +1489,211 @@ main {
     width: fit-content;
   }
 }
+/* =========================================================
+   PATCH STAGE - ONGLETS EXAMENS / EFFECTIF
+========================================================= */
+
+.right-panel-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.right-panel-tabs button {
+  height: 42px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.055);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  cursor: pointer;
+  transition:
+    transform .18s ease,
+    border-color .18s ease,
+    background .18s ease,
+    color .18s ease;
+}
+
+.right-panel-tabs button:hover,
+.right-panel-tabs button.active {
+  transform: translateY(-1px);
+  border-color: rgba(214,180,106,.36);
+  background: rgba(214,180,106,.13);
+  color: var(--gold2);
+}
+
+/* =========================================================
+   EFFECTIF - OUTILS
+========================================================= */
+
+.effectif-tools {
+  display: grid;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 14px;
+  border-radius: 20px;
+  border: 1px solid rgba(255,255,255,.08);
+  background:
+    radial-gradient(circle at 14% 0%, rgba(214,180,106,.10), transparent 35%),
+    rgba(0,0,0,.20);
+}
+
+.effectif-tools .kicker {
+  margin: 0 0 6px;
+}
+
+.effectif-tools h3 {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1;
+  letter-spacing: -.04em;
+}
+
+.effectif-tools input {
+  width: 100%;
+  height: 46px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.11);
+  background:
+    radial-gradient(circle at 14% 0%, rgba(214,180,106,.10), transparent 35%),
+    rgba(0,0,0,.30);
+  color: var(--text);
+  padding: 0 17px;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  outline: none;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 10px 28px rgba(0,0,0,.22);
+  transition:
+    border-color .18s ease,
+    box-shadow .18s ease,
+    background .18s ease;
+}
+
+.effectif-tools input::placeholder {
+  color: rgba(255,247,232,.38);
+  font-weight: 850;
+}
+
+.effectif-tools input:focus {
+  border-color: rgba(214,180,106,.52);
+  box-shadow:
+    0 0 0 4px rgba(214,180,106,.12),
+    inset 0 1px 0 rgba(255,255,255,.04),
+    0 14px 34px rgba(0,0,0,.30);
+}
+
+/* =========================================================
+   EFFECTIF - LISTE
+========================================================= */
+
+.effectif-list {
+  display: grid;
+  gap: 10px;
+}
+
+.effectif-row {
+  display: grid;
+  grid-template-columns: 95px minmax(0, 1fr) auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 13px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.08);
+  background:
+    linear-gradient(145deg, rgba(18,18,18,.82), rgba(8,8,8,.72));
+  backdrop-filter: blur(18px);
+}
+
+.effectif-row strong {
+  color: var(--gold2);
+  font-size: 13px;
+  font-weight: 1000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.effectif-row b {
+  display: block;
+  font-size: 14px;
+  font-weight: 1000;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.effectif-row span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.effectif-row em {
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.10);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 1000;
+  white-space: nowrap;
+}
+
+.effectif-row em.ok {
+  color: var(--green);
+  background: var(--green-bg);
+  border-color: rgba(74,222,128,.30);
+}
+
+.effectif-row em.no {
+  color: var(--red);
+  background: var(--red-bg);
+  border-color: rgba(248,113,113,.26);
+}
+
+.effectif-empty {
+  padding: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(214,180,106,.18);
+  background: rgba(214,180,106,.08);
+  color: var(--gold2);
+  font-weight: 900;
+  text-align: center;
+}
+
+/* =========================================================
+   RESPONSIVE EFFECTIF
+========================================================= */
+
+@media (max-width: 1100px) {
+  .effectif-row {
+    grid-template-columns: 90px minmax(0, 1fr);
+  }
+
+  .effectif-row em {
+    width: fit-content;
+  }
+}
+
+@media (max-width: 850px) {
+  .right-panel-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .effectif-row {
+    grid-template-columns: 1fr;
+  }
+
+  .effectif-row em {
+    width: fit-content;
+  }
+}
