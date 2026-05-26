@@ -338,9 +338,9 @@ function renderStageSearchResults(query) {
   }
 
   resultBox.innerHTML = matches.map(item => `
-    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}">
+    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}" title="${escapeHtml(item.studentName)}">
       <div>
-        <strong>${escapeHtml(item.studentName)}</strong>
+        <strong title="${escapeHtml(item.studentName)}">${escapeHtml(item.studentName)}</strong>
         <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.score)} · ${escapeHtml(item.status)}</span>
       </div>
 
@@ -628,13 +628,18 @@ function renderEffectifRows() {
 
         const stageClass = stageCompany ? "ok" : "no";
 
+        const safeStudentName = escapeHtml(item.studentName || "Nom non renseigné");
+        const safeIdUnique = escapeHtml(item.idUnique || "ID non renseigné");
+        const safeExamText = escapeHtml(examText);
+        const safeFullTitle = `${safeStudentName} — ID ${safeIdUnique} — ${safeExamText}`;
+
         return `
-          <div class="effectif-row">
-            <strong>${escapeHtml(item.idUnique || "ID non renseigné")}</strong>
+          <div class="effectif-row" title="${safeFullTitle}">
+            <strong title="${safeIdUnique}">${safeIdUnique}</strong>
 
             <div>
-              <b>${escapeHtml(item.studentName || "Nom non renseigné")}</b>
-              <span>${examText}</span>
+              <b title="${safeStudentName}">${safeStudentName}</b>
+              <span title="${safeExamText}">${safeExamText}</span>
             </div>
 
             <em class="${examClass}">
@@ -885,7 +890,7 @@ function renderExamParticipants() {
         <strong>${escapeHtml(participant.idUnique)}</strong>
 
         <div class="exam-name">
-          <b>${escapeHtml(participant.studentName)}</b>
+          <b title="${escapeHtml(participant.studentName)}">${escapeHtml(participant.studentName)}</b>
           <span>${escapeHtml(participant.totalScore)} / ${escapeHtml(participant.maxScore)} · ${escapeHtml(statusLabel)}</span>
         </div>
 
