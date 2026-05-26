@@ -2016,3 +2016,104 @@ main {
     margin-right: 0;
   }
 }
+/* =========================================================
+   PATCH EFFECTIF - TOOLTIP JOLI NOM COMPLET
+========================================================= */
+
+.effectif-row.has-effectif-tooltip {
+  position: relative;
+}
+
+.effectif-row.has-effectif-tooltip::after {
+  content: attr(data-tooltip);
+
+  position: absolute;
+  left: 105px;
+  top: -14px;
+  z-index: 9999;
+
+  min-width: 220px;
+  max-width: min(480px, 74vw);
+
+  padding: 11px 14px;
+
+  border-radius: 15px;
+  border: 1px solid rgba(214,180,106,.34);
+
+  background:
+    radial-gradient(circle at 14% 0%, rgba(214,180,106,.18), transparent 35%),
+    linear-gradient(145deg, rgba(22,22,22,.98), rgba(6,6,6,.96));
+
+  color: var(--text);
+
+  box-shadow:
+    0 18px 48px rgba(0,0,0,.52),
+    inset 0 1px 0 rgba(255,255,255,.06);
+
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.35;
+
+  white-space: normal;
+  word-break: break-word;
+
+  opacity: 0;
+  pointer-events: none;
+
+  transform: translateY(6px) scale(.985);
+  transition:
+    opacity .16s ease,
+    transform .16s ease;
+}
+
+.effectif-row.has-effectif-tooltip::before {
+  content: "";
+
+  position: absolute;
+  left: 122px;
+  top: 20px;
+  z-index: 9998;
+
+  width: 10px;
+  height: 10px;
+
+  background: rgba(10,10,10,.98);
+  border-left: 1px solid rgba(214,180,106,.34);
+  border-bottom: 1px solid rgba(214,180,106,.34);
+
+  transform: rotate(-45deg);
+
+  opacity: 0;
+  pointer-events: none;
+
+  transition: opacity .16s ease;
+}
+
+.effectif-row.has-effectif-tooltip:hover::after,
+.effectif-row.has-effectif-tooltip:hover::before {
+  opacity: 1;
+}
+
+.effectif-row.has-effectif-tooltip:hover::after {
+  transform: translateY(0) scale(1);
+}
+
+.effectif-row b,
+.effectif-row strong,
+.effectif-row span {
+  cursor: help;
+}
+
+@media (max-width: 850px) {
+  .effectif-row.has-effectif-tooltip::after {
+    left: 12px;
+    right: 12px;
+    top: -56px;
+    max-width: none;
+  }
+
+  .effectif-row.has-effectif-tooltip::before {
+    left: 28px;
+    top: -10px;
+  }
+}
