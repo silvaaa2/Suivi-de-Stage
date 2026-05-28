@@ -34,6 +34,7 @@ const db = getFirestore(app);
 
 const STAGE_COLLECTION = "stageValidations";
 const EXAM_COLLECTION = "examAnswerStatuses";
+const STAGE_ARCHIVE_COLLECTION = "stageArchives";
 
 const DEFAULT_EFFECTIF_SPREADSHEET_ID = "1DRZwLrNXK_kkxpSsaPn_m7XDJ5v0_5iGq-8FoWTQRYU";
 const DEFAULT_EFFECTIF_GID = "460642936"; // Feuille Mécanique
@@ -72,16 +73,21 @@ const logoutBtn = document.getElementById("logoutBtn");
 
 const companyGrid = document.getElementById("companyGrid");
 const examList = document.getElementById("examList");
+const dashboardTitle = dashboard?.querySelector(".dashboard-top h1");
+const dashboardIntro = dashboard?.querySelector(".dashboard-top .intro");
 
 let stageValidations = [];
 let examParticipants = [];
 let effectifRows = [];
+let stageArchives = [];
 
 let currentUserRole = null;
 let currentStageSearch = "";
 let currentEffectifSearch = "";
 let currentRightPanel = "examens";
 let currentCompanyFilter = "all";
+let currentArchive = null;
+let currentArchiveSearch = "";
 
 function normalizeIdUnique(value) {
   return String(value || "")
@@ -314,6 +320,229 @@ function renderCompanyFilterOptions() {
 }
 
 /* =========================================================
+   ARCHIVES CURSUS
+========================================================= */
+
+function normalizeArchiveDateInput(value) {
+  const raw = String(value || "").trim();
+
+  const slashMatch = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if (slashMatch) {
+    const day = slashMatch[1].padStart(2, "0");
+    const month = slashMatch[2].padStart(2, "0");
+    const year = slashMatch[3];
+
+    return {
+      iso: `${year}-${month}-${day}`,
+      display: `${day}/${month}/${year}`
+    };
+  }
+
+  const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if (isoMatch) {
+    const year = isoMatch[1];
+    const month = isoMatch[2].padStart(2, "0");
+    const day = isoMatch[3].padStart(2, "0");
+
+    return {
+      iso: `${year}-${month}-${day}`,
+      display: `${day}/${month}/${year}`
+    };
+  }
+
+  return null;
+}
+
+function formatArchiveDate(value) {
+  const parsed = normalizeArchiveDateInput(value);
+  if (parsed) return parsed.display;
+
+  return String(value || "").trim() || "date inconnue";
+}
+
+function getArchiveDisplayTitle(archive) {
+  const start = archive.startDisplay || formatArchiveDate(archive.startDate);
+  const end = archive.endDisplay || formatArchiveDate(archive.endDate);
+
+  return `Archive du ${start} au ${end}`;
+}
+
+function buildArchiveDocId(start, end) {
+  return `archive_${start.iso}_${end.iso}`;
+}
+
+function setDashboardCurrentTitle() {
+  if (dashboardTitle) {
+    dashboardTitle.textContent = "Stagiaire Garage";
+  }
+
+  if (dashboardIntro) {
+    dashboardIntro.textContent = "Ajoutez les ID Unique de vos stagiaires. Sur la droite les examens seront actualisés avec le résultat du candidat.";
+  }
+}
+
+function setDashboardArchiveTitle(archive) {
+  if (dashboardTitle) {
+    dashboardTitle.textContent = `Stagiaire Garage — ${getArchiveDisplayTitle(archive)}`;
+  }
+
+  if (dashboardIntro) {
+    dashboardIntro.textContent = "Lecture seule de l’ancien cursus archivé : entreprises, stagiaires et résultats d’examen.";
+  }
+}
+
+async function loadStageArchives() {
+  const snap = await getDocs(collection(db, STAGE_ARCHIVE_COLLECTION));
+
+  stageArchives = [];
+
+  snap.forEach(docSnap => {
+    stageArchives.push({
+      firebaseId: docSnap.id,
+      ...docSnap.data()
+    });
+  });
+
+  stageArchives.sort((a, b) => {
+    return String(b.startDate || "").localeCompare(String(a.startDate || ""));
+  });
+}
+
+function getArchiveStageCompanyForId(archive, normalizedIdUnique) {
+  const found = (archive.stageValidations || []).find(item => {
+    return item.normalizedIdUnique === normalizedIdUnique;
+  });
+
+  return found?.companyName || "";
+}
+
+function getArchiveStageCompanyIdForId(archive, normalizedIdUnique) {
+  const found = (archive.stageValidations || []).find(item => {
+    return item.normalizedIdUnique === normalizedIdUnique;
+  });
+
+  return found?.companyId || "";
+}
+
+function getArchiveStagesByCompany(archive, companyId) {
+  return (archive.stageValidations || [])
+    .filter(item => item.companyId === companyId)
+    .sort((a, b) => String(a.idUnique).localeCompare(String(b.idUnique), "fr"));
+}
+
+function getArchiveFilteredExamParticipants(archive) {
+  const search = normalizeSearchText(currentArchiveSearch);
+  const searchId = normalizeIdUnique(currentArchiveSearch);
+
+  return (archive.examParticipants || []).filter(participant => {
+    const normalizedId = participant.normalizedIdUnique || normalizeIdUnique(participant.idUnique);
+    const companyId = participant.companyId || getArchiveStageCompanyIdForId(archive, normalizedId);
+
+    if (currentCompanyFilter === "none" && companyId) return false;
+    if (currentCompanyFilter !== "all" && currentCompanyFilter !== "none" && companyId !== currentCompanyFilter) return false;
+
+    if (!search && !searchId) return true;
+
+    const name = normalizeSearchText(participant.studentName || "");
+    const id = normalizeIdUnique(participant.idUnique || "");
+
+    return name.includes(search) || id.includes(searchId);
+  }).sort((a, b) => {
+    return String(a.studentName).localeCompare(String(b.studentName), "fr");
+  });
+}
+
+function buildArchiveSummary(stageItems, examItems) {
+  const approved = examItems.filter(item => item.status === "approved").length;
+  const rejected = examItems.filter(item => item.status === "rejected").length;
+  const pending = examItems.filter(item => item.status !== "approved" && item.status !== "rejected").length;
+
+  return {
+    totalStages: stageItems.length,
+    totalExams: examItems.length,
+    approved,
+    rejected,
+    pending
+  };
+}
+
+async function createStageArchive(start, end) {
+  const archiveId = buildArchiveDocId(start, end);
+
+  const stageItems = stageValidations.map(item => ({
+    firebaseId: item.firebaseId || "",
+    idUnique: item.idUnique || "",
+    normalizedIdUnique: item.normalizedIdUnique || normalizeIdUnique(item.idUnique || ""),
+    companyId: item.companyId || "",    companyName: item.companyName || "",
+    status: item.status || "approved"
+  }));
+
+  const examItems = examParticipants.map(participant => {
+    const normalizedId = participant.normalizedIdUnique || normalizeIdUnique(participant.idUnique || "");
+    const companyId = getStageCompanyIdForId(normalizedId);
+    const companyName = getStageCompanyForId(normalizedId);
+
+    return {
+      firebaseId: participant.firebaseId || "",
+      idUnique: participant.idUnique || "",
+      normalizedIdUnique: normalizedId,
+      studentName: participant.studentName || "Nom non renseigné",
+      totalScore: Number(participant.totalScore || 0),
+      maxScore: Number(participant.maxScore || 50),
+      status: participant.status || "pending",
+      companyId,
+      companyName
+    };
+  });
+
+  const archivePayload = {
+    title: `Archive du ${start.display} au ${end.display}`,
+    startDate: start.iso,
+    endDate: end.iso,
+    startDisplay: start.display,
+    endDisplay: end.display,
+    stageValidations: stageItems,
+    examParticipants: examItems,
+    summary: buildArchiveSummary(stageItems, examItems),
+    archivedBy: auth.currentUser?.email || "professeur inconnu",
+    createdAt: serverTimestamp()
+  };
+
+  await setDoc(doc(db, STAGE_ARCHIVE_COLLECTION, archiveId), archivePayload);
+
+  return archiveId;
+}
+
+window.openStageArchive = function(archiveId) {
+  const archive = stageArchives.find(item => item.firebaseId === archiveId);
+
+  if (!archive) {
+    alert("Archive introuvable.");
+    return;
+  }
+
+  currentArchive = archive;
+  currentRightPanel = "examens";
+  currentArchiveSearch = "";
+  currentCompanyFilter = "all";
+
+  setDashboardArchiveTitle(archive);
+  renderCompanies();
+  renderExamParticipants();
+};
+
+window.closeStageArchive = function() {
+  currentArchive = null;
+  currentRightPanel = "archives";
+  currentArchiveSearch = "";
+  currentCompanyFilter = "all";
+
+  setDashboardCurrentTitle();
+  renderCompanies();
+  renderExamParticipants();
+};
+
+/* =========================================================
    RECHERCHE EXAMENS
 ========================================================= */
 
@@ -406,6 +635,29 @@ function bindStageSearch() {
     });
 
     renderStageSearchResults(currentStageSearch);
+  }
+
+  if (filter) {
+    filter.value = currentCompanyFilter;
+
+    filter.addEventListener("change", () => {
+      currentCompanyFilter = filter.value;
+      renderExamParticipants();
+    });
+  }
+}
+
+function bindArchiveControls() {
+  const input = document.getElementById("archiveSearchInput");
+  const filter = document.getElementById("archiveCompanyFilter");
+
+  if (input) {
+    input.value = currentArchiveSearch;
+
+    input.addEventListener("input", () => {
+      currentArchiveSearch = input.value;
+      renderExamParticipants();
+    });
   }
 
   if (filter) {
@@ -755,15 +1007,13 @@ async function renderEffectifPanel() {
       </div>
     `;
   }
-}
-
-/* =========================================================
+}/* =========================================================
    ONGLETS PANNEAU DROIT
 ========================================================= */
 
 function renderRightPanelTabs() {
   return `
-    <div class="right-panel-tabs">
+    <div class="right-panel-tabs right-panel-tabs-archives">
       <button
         type="button"
         class="${currentRightPanel === "examens" ? "active" : ""}"
@@ -776,8 +1026,17 @@ function renderRightPanelTabs() {
         type="button"
         class="${currentRightPanel === "effectif" ? "active" : ""}"
         onclick="window.switchRightPanel('effectif')"
+        ${currentArchive ? "disabled" : ""}
       >
         Effectif
+      </button>
+
+      <button
+        type="button"
+        class="${currentRightPanel === "archives" ? "active" : ""}"
+        onclick="window.switchRightPanel('archives')"
+      >
+        Archives
       </button>
     </div>
 
@@ -789,8 +1048,20 @@ window.switchRightPanel = function(panel) {
   currentRightPanel = panel;
 
   if (panel === "effectif") {
+    if (currentArchive) {
+      currentRightPanel = "examens";
+      renderExamParticipants();
+      return;
+    }
+
     renderExamParticipants();
     renderEffectifPanel();
+    return;
+  }
+
+  if (panel === "archives") {
+    renderExamParticipants();
+    renderArchivesPanel();
     return;
   }
 
@@ -802,6 +1073,38 @@ window.switchRightPanel = function(panel) {
 ========================================================= */
 
 function renderCompanies() {
+  if (currentArchive) {
+    setDashboardArchiveTitle(currentArchive);
+
+    const companiesHtml = COMPANIES.map(company => {
+      const entries = getArchiveStagesByCompany(currentArchive, company.id);
+
+      const rowsHtml = entries.length
+        ? entries.map(entry => `
+            <div class="stage-id-row archive-stage-row">
+              <strong>${escapeHtml(entry.idUnique || "ID inconnu")}</strong>
+            </div>
+          `).join("")
+        : `<div class="empty-row">Aucun ID archivé.</div>`;
+
+      return `
+        <article class="company-column archive-company-column">
+          <div class="company-head">${escapeHtml(company.name)}</div>
+          <div class="company-subhead">ID Unique archivés</div>
+
+          <div class="stage-id-list">
+            ${rowsHtml}
+          </div>
+        </article>
+      `;
+    }).join("");
+
+    companyGrid.innerHTML = companiesHtml;
+    return;
+  }
+
+  setDashboardCurrentTitle();
+
   const companiesHtml = COMPANIES.map(company => {
     const entries = getStagesByCompany(company.id);
 
@@ -862,7 +1165,7 @@ function renderCompanies() {
 }
 
 /* =========================================================
-   RENDER EXAMENS / EFFECTIF
+   RENDER EXAMENS / EFFECTIF / ARCHIVES
 ========================================================= */
 
 function renderExamParticipants() {
@@ -871,8 +1174,18 @@ function renderExamParticipants() {
   const content = document.getElementById("rightPanelContent");
   if (!content) return;
 
+  if (currentRightPanel === "archives") {
+    renderArchivesPanel();
+    return;
+  }
+
   if (currentRightPanel === "effectif") {
     renderEffectifPanel();
+    return;
+  }
+
+  if (currentArchive) {
+    renderArchiveExamParticipants(content);
     return;
   }
 
@@ -992,6 +1305,147 @@ function renderExamParticipants() {
   bindStageSearch();
 }
 
+function renderArchiveExamParticipants(content) {
+  const archiveParticipants = getArchiveFilteredExamParticipants(currentArchive);
+
+  const archiveHeader = `
+    <div class="archive-current-box">
+      <div>
+        <p class="kicker">Archive ouverte</p>
+        <h3>${escapeHtml(getArchiveDisplayTitle(currentArchive))}</h3>
+      </div>
+
+      <button
+        type="button"
+        class="archive-return-btn"
+        onclick="window.closeStageArchive()"
+      >
+        Retour cursus actuel
+      </button>
+    </div>
+  `;
+
+  const archiveTools = `
+    <div class="exam-search-panel archive-search-panel">
+      <div class="exam-tools-row">
+        <div class="exam-tool-block">
+          <p class="kicker">Recherche archive</p>
+
+          <input
+            id="archiveSearchInput"
+            type="text"
+            placeholder="Nom ou ID Unique..."
+            autocomplete="off"
+            value="${escapeHtml(currentArchiveSearch)}"
+          >
+        </div>
+
+        <div class="exam-tool-block exam-filter-block">
+          <p class="kicker">Filtres</p>
+
+          <select id="archiveCompanyFilter">
+            ${renderCompanyFilterOptions()}
+          </select>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const rowsHtml = archiveParticipants.length
+    ? archiveParticipants.map(participant => {
+        const normalizedId = participant.normalizedIdUnique || normalizeIdUnique(participant.idUnique || "");
+        const companyName = participant.companyName || getArchiveStageCompanyForId(currentArchive, normalizedId);
+        const hasStage = Boolean(companyName);
+        const statusLabel = getStatusLabel(participant.status);
+        const statusClass = getExamStatusClass(participant.status);
+
+        const badgeText = hasStage
+          ? "✅ " + escapeHtml(companyName)
+          : "Aucun stage";
+
+        return `
+          <div class="exam-row archive-exam-row ${hasStage ? "stage-ok" : ""} ${statusClass}">
+            <strong>${escapeHtml(participant.idUnique || "ID inconnu")}</strong>
+
+            <div class="exam-name">
+              <b title="${escapeHtml(participant.studentName || "Nom non renseigné")}">${escapeHtml(participant.studentName || "Nom non renseigné")}</b>
+              <span>${escapeHtml(participant.totalScore || 0)} / ${escapeHtml(participant.maxScore || 50)} · ${escapeHtml(statusLabel)}</span>
+            </div>
+
+            <span class="badge ${hasStage ? "ok" : "no"}">
+              ${badgeText}
+            </span>
+          </div>
+        `;
+      }).join("")
+    : `
+      <div class="loading-box">
+        Aucun participant dans cette archive pour ce filtre.
+      </div>
+    `;
+
+  content.innerHTML = `
+    ${archiveHeader}
+    ${archiveTools}
+    ${rowsHtml}
+  `;
+
+  bindArchiveControls();
+}
+
+function renderArchivesPanel() {
+  const content = document.getElementById("rightPanelContent");
+  if (!content) return;
+
+  if (!stageArchives.length) {
+    content.innerHTML = `
+      <div class="archive-list-panel">
+        <p class="kicker">Archives</p>
+        <h3>Aucune archive</h3>
+        <p>
+          Quand vous réinitialisez une semaine, le cursus est sauvegardé ici avec les stagiaires et les résultats.
+        </p>
+      </div>
+    `;
+    return;
+  }
+
+  const cardsHtml = stageArchives.map(archive => {
+    const summary = archive.summary || {};
+    const safeArchiveId = escapeJsString(archive.firebaseId);
+
+    return `
+      <button
+        type="button"
+        class="archive-card-btn"
+        onclick="window.openStageArchive('${safeArchiveId}')"
+      >
+        <span>${escapeHtml(getArchiveDisplayTitle(archive))}</span>
+        <strong>
+          ${escapeHtml(summary.totalStages || 0)} ID stage · ${escapeHtml(summary.totalExams || 0)} examen(s)
+        </strong>
+        <em>
+          ✅ ${escapeHtml(summary.approved || 0)} approuvé(s) · ❌ ${escapeHtml(summary.rejected || 0)} refusé(s) · ⏳ ${escapeHtml(summary.pending || 0)} en attente
+        </em>
+      </button>
+    `;
+  }).join("");
+
+  content.innerHTML = `
+    <div class="archive-list-panel">
+      <p class="kicker">Archives</p>
+      <h3>Cursus archivés</h3>
+      <p>
+        Sélectionnez une archive pour revoir le cursus en lecture seule.
+      </p>
+
+      <div class="archive-list">
+        ${cardsHtml}
+      </div>
+    </div>
+  `;
+}
+
 /* =========================================================
    AJOUT LISTE
 ========================================================= */
@@ -1084,9 +1538,7 @@ function ensureBulkModal() {
         </div>
       </div>
     </div>
-  `);
-
-  const submitBtn = document.getElementById("bulkStageSubmitBtn");
+  `);  const submitBtn = document.getElementById("bulkStageSubmitBtn");
 
   submitBtn.addEventListener("click", async () => {
     const modal = document.getElementById("bulkStageModal");
@@ -1128,6 +1580,11 @@ function ensureBulkModal() {
 }
 
 window.openBulkStageModal = function(companyId) {
+  if (currentArchive) {
+    alert("Impossible de modifier une archive.");
+    return;
+  }
+
   const modal = document.getElementById("bulkStageModal");
   const textarea = document.getElementById("bulkStageTextarea");
   const title = document.getElementById("bulkStageTitle");
@@ -1235,6 +1692,11 @@ window.openEffectifLinkModal = function() {
     return;
   }
 
+  if (currentArchive) {
+    alert("Impossible de modifier l’effectif depuis une archive.");
+    return;
+  }
+
   ensureEffectifLinkModal();
 
   const modal = document.getElementById("effectifLinkModal");
@@ -1277,6 +1739,11 @@ window.resetEffectifLink = resetEffectifLink;
 ========================================================= */
 
 window.deleteStageIdFromStage = async function(docId, idUnique) {
+  if (currentArchive) {
+    alert("Impossible de modifier une archive.");
+    return;
+  }
+
   console.log("DELETE STAGE ID CLICK OK", {
     docId,
     idUnique,
@@ -1306,6 +1773,11 @@ window.deleteStageIdFromStage = async function(docId, idUnique) {
 };
 
 window.deleteCompanyStageList = async function(companyId) {
+  if (currentArchive) {
+    alert("Impossible de modifier une archive.");
+    return;
+  }
+
   const company = COMPANIES.find(item => item.id === companyId);
   if (!company) {
     alert("Entreprise introuvable.");
@@ -1344,6 +1816,11 @@ window.deleteCompanyStageList = async function(companyId) {
 ========================================================= */
 
 window.deleteExamParticipantFromStage = async function(docId, studentName) {
+  if (currentArchive) {
+    alert("Impossible de modifier une archive.");
+    return;
+  }
+
   console.log("DELETE INLINE CLICK OK", {
     docId,
     studentName,
@@ -1384,6 +1861,11 @@ window.deleteExamParticipantFromStage = async function(docId, studentName) {
 };
 
 window.deleteAllExamParticipantsFromStage = async function() {
+  if (currentArchive) {
+    alert("Impossible de modifier une archive.");
+    return;
+  }
+
   if (currentUserRole !== "prof") {
     alert("Seul un compte professeur peut supprimer tous les participants.");
     return;
@@ -1426,12 +1908,17 @@ window.deleteAllExamParticipantsFromStage = async function() {
 };
 
 /* =========================================================
-   RESET SEMAINE PROF
+   RESET SEMAINE PROF + ARCHIVE
 ========================================================= */
 
 window.resetStageWeek = async function() {
   if (currentUserRole !== "prof") {
     alert("Seul un compte professeur peut réinitialiser la semaine.");
+    return;
+  }
+
+  if (currentArchive) {
+    alert("Impossible de réinitialiser depuis une archive.");
     return;
   }
 
@@ -1443,16 +1930,61 @@ window.resetStageWeek = async function() {
     return;
   }
 
-  const typed = prompt(
-    `⚠️ RÉINITIALISATION SEMAINE\n\nCette action va :\n- supprimer ${totalStages} ID Unique de stage ;\n- masquer ${totalExams} examen(s).\n\nTape RESET pour confirmer.`
+  const startInput = prompt(
+    "Date de début du cursus à archiver ?\n\nFormat : JJ/MM/AAAA",
+    "18/05/2026"
   );
 
-  if (typed !== "RESET") {
+  if (!startInput) {
     alert("Réinitialisation annulée.");
     return;
   }
 
+  const startDate = normalizeArchiveDateInput(startInput);
+
+  if (!startDate) {
+    alert("Date de début invalide. Utilise le format JJ/MM/AAAA.");
+    return;
+  }
+
+  const endInput = prompt(
+    "Date de fin du cursus à archiver ?\n\nFormat : JJ/MM/AAAA",
+    "31/05/2026"
+  );
+
+  if (!endInput) {
+    alert("Réinitialisation annulée.");
+    return;
+  }
+
+  const endDate = normalizeArchiveDateInput(endInput);
+
+  if (!endDate) {
+    alert("Date de fin invalide. Utilise le format JJ/MM/AAAA.");
+    return;
+  }
+
+  const archiveId = buildArchiveDocId(startDate, endDate);
+
+  const typed = prompt(
+    `⚠️ ARCHIVAGE + RÉINITIALISATION\n\n` +
+    `Une archive sera créée :\n` +
+    `Archive du ${startDate.display} au ${endDate.display}\n\n` +
+    `Elle contiendra :\n` +
+    `- ${totalStages} ID Unique de stage ;\n` +
+    `- ${totalExams} examen(s) avec scores/statuts.\n\n` +
+    `Ensuite la semaine actuelle sera réinitialisée.\n\n` +
+    `Tape ARCHIVE pour confirmer.`
+  );
+
+  if (typed !== "ARCHIVE") {
+    alert("Archivage annulé.");
+    return;
+  }
+
   try {
+    await createStageArchive(startDate, endDate);
+
     const stageDeletes = stageValidations.map(item => {
       return deleteDoc(doc(db, STAGE_COLLECTION, item.firebaseId));
     });
@@ -1464,21 +1996,27 @@ window.resetStageWeek = async function() {
         archived: true,
         archivedBy: auth.currentUser?.email || "professeur inconnu",
         archivedAt: serverTimestamp(),
-        resetWeek: true
+        resetWeek: true,
+        archivedInCursus: archiveId
       }, { merge: true });
     });
 
     await Promise.all([...stageDeletes, ...examArchives]);
 
-    alert("Semaine réinitialisée ✅");
+    alert(`Archive créée ✅\n\nArchive du ${startDate.display} au ${endDate.display}\n\nSemaine réinitialisée.`);
+
+    currentArchive = null;
+    currentRightPanel = "examens";
     currentStageSearch = "";
     currentEffectifSearch = "";
+    currentArchiveSearch = "";
     currentCompanyFilter = "all";
     effectifRows = [];
+
     await refreshAll();
   } catch (error) {
-    console.error("Erreur réinitialisation semaine :", error);
-    alert(`Erreur réinitialisation : ${error.code || error.message}`);
+    console.error("Erreur archivage/réinitialisation semaine :", error);
+    alert(`Erreur archivage/réinitialisation : ${error.code || error.message}`);
   }
 };
 
@@ -1492,6 +2030,7 @@ async function refreshAll() {
 
   await loadStageValidations();
   await loadExamParticipants();
+  await loadStageArchives();
 
   renderCompanies();
   renderExamParticipants();
