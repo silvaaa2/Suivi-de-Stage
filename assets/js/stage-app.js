@@ -81,6 +81,7 @@ let currentUserRole = null;
 let currentStageSearch = "";
 let currentEffectifSearch = "";
 let currentRightPanel = "examens";
+let currentCompanyFilter = "all";
 
 function normalizeIdUnique(value) {
   return String(value || "")
@@ -260,6 +261,11 @@ function getStageCompanyForId(normalizedIdUnique) {
   return found?.companyName || "";
 }
 
+function getStageCompanyIdForId(normalizedIdUnique) {
+  const found = stageValidations.find(item => item.normalizedIdUnique === normalizedIdUnique);
+  return found?.companyId || "";
+}
+
 function getStatusLabel(status) {
   switch (status) {
     case "approved":
@@ -269,6 +275,42 @@ function getStatusLabel(status) {
     default:
       return "En attente";
   }
+}
+
+function getExamStatusClass(status) {
+  switch (status) {
+    case "approved":
+      return "status-approved";
+    case "rejected":
+      return "status-rejected";
+    default:
+      return "status-pending";
+  }
+}
+
+function getFilteredExamParticipants() {
+  return examParticipants.filter(participant => {
+    const companyId = getStageCompanyIdForId(participant.normalizedIdUnique);
+
+    if (currentCompanyFilter === "all") return true;
+    if (currentCompanyFilter === "none") return !companyId;
+
+    return companyId === currentCompanyFilter;
+  });
+}
+
+function renderCompanyFilterOptions() {
+  const companyOptions = COMPANIES.map(company => `
+    <option value="${escapeHtml(company.id)}" ${currentCompanyFilter === company.id ? "selected" : ""}>
+      ${escapeHtml(company.name)}
+    </option>
+  `).join("");
+
+  return `
+    <option value="all" ${currentCompanyFilter === "all" ? "selected" : ""}>Tous</option>
+    ${companyOptions}
+    <option value="none" ${currentCompanyFilter === "none" ? "selected" : ""}>Aucun stage</option>
+  `;
 }
 
 /* =========================================================
@@ -284,7 +326,7 @@ function getStageSearchMatches(query) {
 
   const results = [];
 
-  examParticipants.forEach(participant => {
+  getFilteredExamParticipants().forEach(participant => {
     const participantName = normalizeSearchText(participant.studentName || "");
     const participantId = normalizeIdUnique(participant.idUnique || "");
 
@@ -296,6 +338,7 @@ function getStageSearchMatches(query) {
     const companyName = getStageCompanyForId(participant.normalizedIdUnique);
     const hasStage = Boolean(companyName);
     const statusLabel = getStatusLabel(participant.status);
+    const statusClass = getExamStatusClass(participant.status);
 
     results.push({
       key: participant.firebaseId,
@@ -304,6 +347,7 @@ function getStageSearchMatches(query) {
       companyName: companyName || "Aucun stage",
       hasStage,
       status: statusLabel,
+      statusClass,
       score: `${participant.totalScore} / ${participant.maxScore}`
     });
   });
@@ -338,7 +382,7 @@ function renderStageSearchResults(query) {
   }
 
   resultBox.innerHTML = matches.map(item => `
-    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"}" title="${escapeHtml(item.studentName)}">
+    <div class="stage-search-result ${item.hasStage ? "found" : "not-found"} ${item.statusClass}" title="${escapeHtml(item.studentName)}">
       <div>
         <strong title="${escapeHtml(item.studentName)}">${escapeHtml(item.studentName)}</strong>
         <span>ID ${escapeHtml(item.idUnique)} · ${escapeHtml(item.score)} · ${escapeHtml(item.status)}</span>
@@ -351,16 +395,27 @@ function renderStageSearchResults(query) {
 
 function bindStageSearch() {
   const input = document.getElementById("stageSearchInput");
-  if (!input) return;
+  const filter = document.getElementById("stageCompanyFilter");
 
-  input.value = currentStageSearch;
+  if (input) {
+    input.value = currentStageSearch;
 
-  input.addEventListener("input", () => {
-    currentStageSearch = input.value;
+    input.addEventListener("input", () => {
+      currentStageSearch = input.value;
+      renderStageSearchResults(currentStageSearch);
+    });
+
     renderStageSearchResults(currentStageSearch);
-  });
+  }
 
-  renderStageSearchResults(currentStageSearch);
+  if (filter) {
+    filter.value = currentCompanyFilter;
+
+    filter.addEventListener("change", () => {
+      currentCompanyFilter = filter.value;
+      renderExamParticipants();
+    });
+  }
 }
 
 /* =========================================================
@@ -823,14 +878,26 @@ function renderExamParticipants() {
 
   const searchBox = `
     <div class="exam-search-panel">
-      <p class="kicker">Recherche</p>
+      <div class="exam-tools-row">
+        <div class="exam-tool-block">
+          <p class="kicker">Recherche</p>
 
-      <input
-        id="stageSearchInput"
-        type="text"
-        placeholder="Nom ou ID Unique..."
-        autocomplete="off"
-      >
+          <input
+            id="stageSearchInput"
+            type="text"
+            placeholder="Nom ou ID Unique..."
+            autocomplete="off"
+          >
+        </div>
+
+        <div class="exam-tool-block exam-filter-block">
+          <p class="kicker">Filtres</p>
+
+          <select id="stageCompanyFilter">
+            ${renderCompanyFilterOptions()}
+          </select>
+        </div>
+      </div>
 
       <div id="stageSearchResults" class="stage-search-results"></div>
     </div>
@@ -863,49 +930,58 @@ function renderExamParticipants() {
     `
     : "";
 
-  const rowsHtml = examParticipants.map(participant => {
-    const hasStage = hasStageForId(participant.normalizedIdUnique);
-    const companyName = getStageCompanyForId(participant.normalizedIdUnique);
-    const statusLabel = getStatusLabel(participant.status);
+  const visibleExamParticipants = getFilteredExamParticipants();
 
-    const safeDocIdHtml = escapeHtml(participant.firebaseId);
-    const safeDocIdJs = escapeJsString(participant.firebaseId);
-    const safeStudentNameJs = escapeJsString(participant.studentName);
+  const rowsHtml = visibleExamParticipants.length
+    ? visibleExamParticipants.map(participant => {
+        const hasStage = hasStageForId(participant.normalizedIdUnique);
+        const companyName = getStageCompanyForId(participant.normalizedIdUnique);
+        const statusLabel = getStatusLabel(participant.status);
+        const statusClass = getExamStatusClass(participant.status);
 
-    const badgeText = hasStage
-      ? "✅ " + escapeHtml(companyName)
-      : "Aucun stage";
+        const safeDocIdHtml = escapeHtml(participant.firebaseId);
+        const safeDocIdJs = escapeJsString(participant.firebaseId);
+        const safeStudentNameJs = escapeJsString(participant.studentName);
 
-    const deleteButton = currentUserRole === "prof"
-      ? `
-        <button
-          type="button"
-          class="delete-exam-participant-btn"
-          onclick="window.deleteExamParticipantFromStage('${safeDocIdJs}', '${safeStudentNameJs}')"
-          title="Supprimer le participant"
-        >
-          ×
-        </button>
-      `
-      : "";
+        const badgeText = hasStage
+          ? "✅ " + escapeHtml(companyName)
+          : "Aucun stage";
 
-    return `
-      <div class="exam-row ${hasStage ? "stage-ok" : ""}" data-exam-row-id="${safeDocIdHtml}">
-        <strong>${escapeHtml(participant.idUnique)}</strong>
+        const deleteButton = currentUserRole === "prof"
+          ? `
+            <button
+              type="button"
+              class="delete-exam-participant-btn"
+              onclick="window.deleteExamParticipantFromStage('${safeDocIdJs}', '${safeStudentNameJs}')"
+              title="Supprimer le participant"
+            >
+              ×
+            </button>
+          `
+          : "";
 
-        <div class="exam-name">
-          <b title="${escapeHtml(participant.studentName)}">${escapeHtml(participant.studentName)}</b>
-          <span>${escapeHtml(participant.totalScore)} / ${escapeHtml(participant.maxScore)} · ${escapeHtml(statusLabel)}</span>
-        </div>
+        return `
+          <div class="exam-row ${hasStage ? "stage-ok" : ""} ${statusClass}" data-exam-row-id="${safeDocIdHtml}">
+            <strong>${escapeHtml(participant.idUnique)}</strong>
 
-        <span class="badge ${hasStage ? "ok" : "no"}">
-          ${badgeText}
-        </span>
+            <div class="exam-name">
+              <b title="${escapeHtml(participant.studentName)}">${escapeHtml(participant.studentName)}</b>
+              <span>${escapeHtml(participant.totalScore)} / ${escapeHtml(participant.maxScore)} · ${escapeHtml(statusLabel)}</span>
+            </div>
 
-        ${deleteButton}
+            <span class="badge ${hasStage ? "ok" : "no"}">
+              ${badgeText}
+            </span>
+
+            ${deleteButton}
+          </div>
+        `;
+      }).join("")
+    : `
+      <div class="loading-box">
+        Aucun participant pour ce filtre.
       </div>
     `;
-  }).join("");
 
   content.innerHTML = `
     ${searchBox}
@@ -1397,6 +1473,7 @@ window.resetStageWeek = async function() {
     alert("Semaine réinitialisée ✅");
     currentStageSearch = "";
     currentEffectifSearch = "";
+    currentCompanyFilter = "all";
     effectifRows = [];
     await refreshAll();
   } catch (error) {
