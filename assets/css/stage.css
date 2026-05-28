@@ -2243,3 +2243,188 @@ main {
     grid-template-columns: 1fr;
   }
 }
+/* =========================================================
+   PATCH ARCHIVES CURSUS - SITE STAGE
+========================================================= */
+
+.right-panel-tabs-archives {
+  grid-template-columns: repeat(3, 1fr) !important;
+}
+
+.right-panel-tabs button:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.archive-list-panel {
+  padding: 18px;
+  border-radius: 24px;
+  border: 1px solid rgba(255,255,255,.10);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(214,180,106,.12), transparent 34%),
+    linear-gradient(145deg, rgba(18,18,18,.84), rgba(8,8,8,.72));
+  box-shadow:
+    0 24px 70px rgba(0,0,0,.34),
+    inset 0 1px 0 rgba(255,255,255,.04);
+}
+
+.archive-list-panel h3 {
+  margin: 0;
+  font-size: 30px;
+  line-height: .95;
+  letter-spacing: -.04em;
+}
+
+.archive-list-panel p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.45;
+}
+
+.archive-list {
+  margin-top: 16px;
+  display: grid;
+  gap: 10px;
+}
+
+.archive-card-btn {
+  width: 100%;
+  text-align: left;
+  padding: 15px;
+  border-radius: 18px;
+  border: 1px solid rgba(214,180,106,.22);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(214,180,106,.14), transparent 34%),
+    linear-gradient(145deg, rgba(255,255,255,.055), rgba(255,255,255,.020));
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+  display: grid;
+  gap: 6px;
+  transition:
+    transform .18s ease,
+    border-color .18s ease,
+    background .18s ease;
+}
+
+.archive-card-btn:hover {
+  transform: translateY(-2px);
+  border-color: rgba(214,180,106,.42);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(214,180,106,.20), transparent 34%),
+    linear-gradient(145deg, rgba(255,255,255,.07), rgba(255,255,255,.030));
+}
+
+.archive-card-btn span {
+  color: var(--gold2);
+  font-size: 13px;
+  font-weight: 1000;
+}
+
+.archive-card-btn strong {
+  font-size: 13px;
+  font-weight: 1000;
+}
+
+.archive-card-btn em {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 850;
+}
+
+.archive-current-box {
+  margin-bottom: 14px;
+  padding: 16px;
+  border-radius: 22px;
+  border: 1px solid rgba(214,180,106,.22);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(214,180,106,.14), transparent 34%),
+    linear-gradient(145deg, rgba(18,18,18,.84), rgba(8,8,8,.72));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 14px;
+}
+
+.archive-current-box h3 {
+  margin: 0;
+  font-size: 24px;
+  line-height: 1;
+  letter-spacing: -.035em;
+}
+
+.archive-return-btn {
+  min-width: max-content;
+  height: 40px;
+  padding: 0 15px;
+  border-radius: 999px;
+  border: 1px solid rgba(214,180,106,.30);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(214,180,106,.18), transparent 35%),
+    rgba(214,180,106,.10);
+  color: var(--gold2);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 1000;
+  text-transform: uppercase;
+  letter-spacing: .02em;
+  cursor: pointer;
+  transition:
+    transform .18s ease,
+    border-color .18s ease,
+    background .18s ease;
+}
+
+.archive-return-btn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(214,180,106,.48);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(214,180,106,.26), transparent 35%),
+    rgba(214,180,106,.16);
+}
+
+.archive-company-column {
+  opacity: .96;
+}
+
+.archive-stage-row {
+  grid-template-columns: 1fr !important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(214,180,106,.10), transparent 34%),
+    rgba(255,255,255,.045) !important;
+}
+
+.archive-stage-row strong {
+  color: var(--gold2);
+}
+
+.archive-exam-row {
+  grid-template-columns: 120px 1fr auto !important;
+}
+
+.archive-search-panel {
+  margin-bottom: 14px;
+}
+
+@media (max-width: 850px) {
+  .right-panel-tabs-archives {
+    grid-template-columns: 1fr !important;
+  }
+
+  .archive-current-box {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .archive-return-btn {
+    width: 100%;
+  }
+
+  .archive-exam-row {
+    grid-template-columns: 1fr !important;
+  }
+}
