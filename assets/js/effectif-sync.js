@@ -1,7 +1,13 @@
 import "./stage-app.js?v=9071";
 
 import { getApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
-import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
+} from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
 import {
   getFirestore,
   collection,
@@ -28,6 +34,8 @@ const DEFAULT_EFFECTIF_GID = "460642936";
 const EFFECTIF_LINK_STORAGE_KEY = "stage_effectif_google_sheet_link";
 const EFFECTIF_ID_STORAGE_KEY = "stage_effectif_spreadsheet_id";
 const EFFECTIF_GID_STORAGE_KEY = "stage_effectif_gid";
+const REMEMBER_LOGIN_STORAGE_KEY = "stage_remember_login";
+const REMEMBER_EMAIL_STORAGE_KEY = "stage_remember_email";
 
 const app = getApp();
 const auth = getAuth(app);
@@ -496,6 +504,34 @@ function injectSettingsStyles() {
       color: var(--gold2);
       font-size: 13px;
       font-weight: 900;
+    }
+
+    .remember-login-row {
+      display: flex !important;
+      align-items: center;
+      gap: 10px;
+      width: fit-content;
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 900;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .remember-login-row input {
+      width: 18px !important;
+      min-width: 18px !important;
+      height: 18px !important;
+      margin: 0;
+      padding: 0 !important;
+      border-radius: 5px !important;
+      accent-color: var(--gold);
+      cursor: pointer;
+    }
+
+    .remember-login-row span {
+      line-height: 1.25;
     }
 
     .stage-id-row.has-stage-comment-button {
@@ -972,6 +1008,76 @@ window.openEffectifFromSharedSettings = function() {
   }
 };
 
+function ensureRememberMeLogin() {
+  const form = document.getElementById("loginForm");
+  const emailInput = document.getElementById("email");
+  const loginBtn = document.getElementById("loginBtn");
+
+  if (!form || !emailInput || !loginBtn) return;
+
+  injectSettingsStyles();
+
+  let checkbox = document.getElementById("rememberLoginCheckbox");
+
+  if (!checkbox) {
+    const row = document.createElement("label");
+    row.className = "remember-login-row";
+    row.htmlFor = "rememberLoginCheckbox";
+    row.innerHTML = `
+      <input id="rememberLoginCheckbox" type="checkbox">
+      <span>Se souvenir de moi</span>
+    `;
+
+    loginBtn.insertAdjacentElement("beforebegin", row);
+    checkbox = document.getElementById("rememberLoginCheckbox");
+  }
+
+  const remembered = localStorage.getItem(REMEMBER_LOGIN_STORAGE_KEY) === "1";
+  const rememberedEmail = localStorage.getItem(REMEMBER_EMAIL_STORAGE_KEY) || "";
+
+  checkbox.checked = remembered;
+
+  if (remembered && rememberedEmail && !emailInput.value) {
+    emailInput.value = rememberedEmail;
+  }
+
+  if (form.dataset.rememberLoginBound === "1") return;
+
+  form.dataset.rememberLoginBound = "1";
+
+  form.addEventListener("submit", async event => {
+    if (event.stageRememberReplay === true) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+
+    const shouldRemember = Boolean(checkbox.checked);
+    const email = String(emailInput.value || "").trim();
+
+    if (shouldRemember && email) {
+      localStorage.setItem(REMEMBER_LOGIN_STORAGE_KEY, "1");
+      localStorage.setItem(REMEMBER_EMAIL_STORAGE_KEY, email);
+    } else {
+      localStorage.removeItem(REMEMBER_LOGIN_STORAGE_KEY);
+      localStorage.removeItem(REMEMBER_EMAIL_STORAGE_KEY);
+    }
+
+    try {
+      await setPersistence(auth, shouldRemember ? browserLocalPersistence : browserSessionPersistence);
+    } catch (error) {
+      console.warn("Persistence login non modifiée :", error);
+    }
+
+    const replayEvent = new Event("submit", {
+      bubbles: true,
+      cancelable: true
+    });
+
+    replayEvent.stageRememberReplay = true;
+    form.dispatchEvent(replayEvent);
+  }, true);
+}
+
 function getStageRowInfo(row) {
   const docId = row?.dataset?.stageRowId || "";
   const idUnique = row?.querySelector("strong")?.textContent?.trim() || "";
@@ -1430,6 +1536,7 @@ function stopRealtimeListeners() {
 
 wrapEffectifActions();
 wrapStageActionsForHistory();
+ensureRememberMeLogin();
 
 document.addEventListener("keydown", event => {
   if (event.key !== "Escape") return;
@@ -1438,6 +1545,8 @@ document.addEventListener("keydown", event => {
 });
 
 onAuthStateChanged(auth, async (user) => {
+  ensureRememberMeLogin();
+
   if (!user) {
     currentUserRole = null;
     stopRealtimeListeners();
