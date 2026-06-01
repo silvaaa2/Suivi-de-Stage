@@ -503,6 +503,7 @@ function injectSettingsStyles() {
     }
 
     .stage-id-row .stage-comment-btn {
+      position: relative;
       width: 28px;
       height: 28px;
       border-radius: 999px;
@@ -518,11 +519,33 @@ function injectSettingsStyles() {
       transition: transform .18s ease, background .18s ease, border-color .18s ease;
     }
 
-    .stage-id-row .stage-comment-btn:hover,
-    .stage-id-row .stage-comment-btn.has-comment {
+    .stage-id-row .stage-comment-btn:hover {
       transform: scale(1.06);
       background: rgba(214,180,106,.20);
       border-color: rgba(214,180,106,.46);
+    }
+
+    .stage-id-row .stage-comment-btn.has-comment {
+      transform: scale(1.06);
+      border-color: rgba(74,222,128,.48);
+      background:
+        radial-gradient(circle at 30% 18%, rgba(255,255,255,.22), transparent 28%),
+        rgba(74,222,128,.18);
+      color: var(--green);
+      box-shadow: 0 0 0 3px rgba(74,222,128,.08), 0 0 18px rgba(74,222,128,.20);
+    }
+
+    .stage-id-row .stage-comment-btn.has-comment::after {
+      content: "";
+      position: absolute;
+      top: -3px;
+      right: -3px;
+      width: 9px;
+      height: 9px;
+      border-radius: 999px;
+      border: 2px solid rgba(8,8,8,.96);
+      background: var(--green);
+      box-shadow: 0 0 10px rgba(74,222,128,.70);
     }
 
     .stage-comment-modal-overlay {
