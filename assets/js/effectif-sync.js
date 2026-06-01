@@ -1055,7 +1055,14 @@ window.openStageCommentModal = function(docId, idUnique, companyId, companyName)
   if (meta) {
     const updatedBy = comment?.updatedBy || "pas encore modifié";
     const updatedAt = comment?.updatedAt ? formatFirestoreDate(comment.updatedAt) : "";
-    meta.textContent = updatedAt ? `Dernière modification : ${updatedAt} par ${updatedBy}` : "Aucun commentaire enregistré.";
+
+    if (!updatedAt) {
+      meta.textContent = "Aucun commentaire enregistré.";
+    } else if (canSeeSharedSettings()) {
+      meta.textContent = `Dernière modification : ${updatedAt} par ${updatedBy}`;
+    } else {
+      meta.textContent = `Dernière modification : ${updatedAt}`;
+    }
   }
 
   openModal(document.getElementById("stageCommentModal"));
