@@ -125,7 +125,7 @@ function normalizeModuleArchiveItem(docSnap) {
     firebaseId: docSnap.id,
     idUnique: data.idUnique || "",
     normalizedIdUnique: data.normalizedIdUnique || docSnap.id,
-    studentName: data.studentName || "Nom non renseigné",
+    studentName: data.studentName || "Nom non renseigne",
     checks: MODULE_COLUMNS.reduce((result, column) => {
       result[column.key] = checks[column.key] === true;
       return result;
@@ -158,6 +158,120 @@ function buildArchiveId(settings) {
   return `modules_${safeSheet}_${safeGid}_${Date.now()}`;
 }
 
+function padDatePart(value) {
+  return String(value).padStart(2, "0");
+}
+
+function createLocalDate(year, month, day) {
+  const date = new Date(year, month - 1, day);
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function formatDateDisplay(date) {
+  return `${padDatePart(date.getDate())}/${padDatePart(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
+function formatDateIso(date) {
+  return `${date.getFullYear()}-${padDatePart(date.getMonth() + 1)}-${padDatePart(date.getDate())}`;
+}
+
+function addDays(date, days) {
+  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  next.setDate(next.getDate() + days);
+  return next;
+}
+
+function parseCursusDateInput(value) {
+  const input = String(value || "").trim();
+  let year;
+  let month;
+  let day;
+
+  let match = input.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (match) {
+    day = Number(match[1]);
+    month = Number(match[2]);
+    year = Number(match[3]);
+  } else {
+    match = input.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!match) return null;
+
+    year = Number(match[1]);
+    month = Number(match[2]);
+    day = Number(match[3]);
+  }
+
+  const date = createLocalDate(year, month, day);
+  if (!date) return null;
+
+  return {
+    date,
+    iso: formatDateIso(date),
+    display: formatDateDisplay(date)
+  };
+}
+
+function getDefaultCursusPeriod() {
+  const now = new Date();
+  const end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const start = addDays(end, -13);
+
+  return { start, end };
+}
+
+function askArchivePeriod() {
+  const defaults = getDefaultCursusPeriod();
+  const startInput = window.prompt(
+    "Date de debut du cursus a archiver ?\n\nFormat : JJ/MM/AAAA",
+    formatDateDisplay(defaults.start)
+  );
+
+  if (startInput === null) {
+    throw new Error("Archivage annule.");
+  }
+
+  const start = parseCursusDateInput(startInput);
+  if (!start) {
+    throw new Error("Date de debut invalide. Format attendu : JJ/MM/AAAA.");
+  }
+
+  const defaultEnd = addDays(start.date, 13);
+  const endInput = window.prompt(
+    "Date de fin du cursus a archiver ?\n\nFormat : JJ/MM/AAAA",
+    formatDateDisplay(defaultEnd)
+  );
+
+  if (endInput === null) {
+    throw new Error("Archivage annule.");
+  }
+
+  const end = parseCursusDateInput(endInput);
+  if (!end) {
+    throw new Error("Date de fin invalide. Format attendu : JJ/MM/AAAA.");
+  }
+
+  if (end.date.getTime() < start.date.getTime()) {
+    throw new Error("La date de fin doit etre apres la date de debut.");
+  }
+
+  return {
+    startDate: start.iso,
+    endDate: end.iso,
+    startDisplay: start.display,
+    endDisplay: end.display,
+    durationDays: Math.round((end.date.getTime() - start.date.getTime()) / 86400000) + 1
+  };
+}
+
 async function archiveActiveModulesIfEffectifChanges(nextSettings, action) {
   const previousSettings = await loadCurrentEffectifSettings();
 
@@ -181,6 +295,8 @@ async function archiveActiveModulesIfEffectifChanges(nextSettings, action) {
     throw new Error("Changement d'effectif annule.");
   }
 
+  const period = askArchivePeriod();
+
   const items = [];
   modulesSnap.forEach(docSnap => {
     items.push(normalizeModuleArchiveItem(docSnap));
@@ -190,10 +306,17 @@ async function archiveActiveModulesIfEffectifChanges(nextSettings, action) {
   const batch = writeBatch(db);
 
   batch.set(doc(db, STUDENT_MODULE_ARCHIVES_COLLECTION, archiveId), {
-    title: "Archive modules eleves",
+    title: `Archive modules du ${period.startDisplay} au ${period.endDisplay}`,
     trigger: action,
     previousEffectif: previousSettings,
     nextEffectif: normalizeSettings(nextSettings),
+    cursusStartDate: period.startDate,
+    cursusEndDate: period.endDate,
+    cursusStartDisplay: period.startDisplay,
+    cursusEndDisplay: period.endDisplay,
+    startDisplay: period.startDisplay,
+    endDisplay: period.endDisplay,
+    durationDays: period.durationDays,
     students: items,
     summary: buildArchiveSummary(items),
     archivedBy: auth.currentUser?.email || "admin",
@@ -208,7 +331,9 @@ async function archiveActiveModulesIfEffectifChanges(nextSettings, action) {
 
   return {
     archiveId,
-    totalStudents: items.length
+    totalStudents: items.length,
+    cursusStartDisplay: period.startDisplay,
+    cursusEndDisplay: period.endDisplay
   };
 }
 
@@ -253,13 +378,16 @@ async function saveEffectifSettingsWithModuleArchive(settings, action = "effecti
     gid: settings.gid,
     link: settings.link,
     moduleArchiveId: moduleArchive?.archiveId || "",
-    moduleArchiveStudents: moduleArchive?.totalStudents || 0
+    moduleArchiveStudents: moduleArchive?.totalStudents || 0,
+    moduleArchivePeriod: moduleArchive ? `${moduleArchive.cursusStartDisplay} au ${moduleArchive.cursusEndDisplay}` : ""
   });
 
   if (moduleArchive) {
     await addHistorySafely("student_modules_archived", {
       archiveId: moduleArchive.archiveId,
       totalStudents: moduleArchive.totalStudents,
+      cursusStartDisplay: moduleArchive.cursusStartDisplay,
+      cursusEndDisplay: moduleArchive.cursusEndDisplay,
       previousGid: "",
       nextGid: settings.gid
     });
@@ -293,7 +421,7 @@ async function handleSaveClick(event) {
 
     setStatus(
       archive
-        ? `Lien enregistre. Modules archives (${archive.totalStudents} eleve(s)).`
+        ? `Lien enregistre. Modules archives (${archive.totalStudents} eleve(s), ${archive.cursusStartDisplay} au ${archive.cursusEndDisplay}).`
         : "Lien effectif enregistre.",
       "ok"
     );
@@ -323,7 +451,7 @@ async function handleResetClick(event) {
 
     setStatus(
       archive
-        ? `Lien par defaut remis. Modules archives (${archive.totalStudents} eleve(s)).`
+        ? `Lien par defaut remis. Modules archives (${archive.totalStudents} eleve(s), ${archive.cursusStartDisplay} au ${archive.cursusEndDisplay}).`
         : "Lien par defaut remis.",
       "ok"
     );
