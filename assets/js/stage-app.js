@@ -220,10 +220,107 @@ async function loadStageValidations() {
   });
 }
 
+function getExamParticipantFirebaseIds(participant) {
+  return [...new Set([
+    participant?.firebaseId,
+    ...(Array.isArray(participant?.firebaseIds) ? participant.firebaseIds : [])
+  ].filter(Boolean))];
+}
+
+function getExamParticipantScoreFieldCount(participant) {
+  if (Number.isFinite(Number(participant?.scoreFieldCount))) {
+    return Number(participant.scoreFieldCount);
+  }
+
+  return participant?.fieldScores && typeof participant.fieldScores === "object"
+    ? Object.keys(participant.fieldScores).length
+    : 0;
+}
+
+function getExamParticipantUpdatedAt(participant) {
+  const value = participant?.updatedAt;
+
+  if (typeof value?.toMillis === "function") return value.toMillis();
+  if (typeof value?.toDate === "function") return value.toDate().getTime();
+  if (Number.isFinite(Number(value?.seconds))) return Number(value.seconds) * 1000;
+  if (Number.isFinite(Number(participant?.updatedAtMs))) return Number(participant.updatedAtMs);
+
+  return 0;
+}
+
+function isAutomaticOnePointResult(participant) {
+  return Number(participant?.totalScore || 0) === 1 &&
+    Number(participant?.maxScore || 50) === 50 &&
+    getExamParticipantScoreFieldCount(participant) <= 1;
+}
+
+function shouldPreferExamParticipant(candidate, current) {
+  const candidatePriority = [
+    isAutomaticOnePointResult(candidate) ? 0 : 1,
+    getExamParticipantScoreFieldCount(candidate),
+    getExamParticipantUpdatedAt(candidate),
+    Number(candidate?.totalScore || 0)
+  ];
+
+  const currentPriority = [
+    isAutomaticOnePointResult(current) ? 0 : 1,
+    getExamParticipantScoreFieldCount(current),
+    getExamParticipantUpdatedAt(current),
+    Number(current?.totalScore || 0)
+  ];
+
+  for (let index = 0; index < candidatePriority.length; index += 1) {
+    if (candidatePriority[index] === currentPriority[index]) continue;
+    return candidatePriority[index] > currentPriority[index];
+  }
+
+  return false;
+}
+
+function dedupeExamParticipants(participants) {
+  const participantsById = new Map();
+
+  (participants || []).forEach(participant => {
+    const normalizedId = participant.normalizedIdUnique || normalizeIdUnique(participant.idUnique || "");
+    if (!normalizedId) return;
+
+    const normalizedParticipant = {
+      ...participant,
+      normalizedIdUnique: normalizedId,
+      firebaseIds: getExamParticipantFirebaseIds(participant)
+    };
+
+    const current = participantsById.get(normalizedId);
+
+    if (!current) {
+      participantsById.set(normalizedId, normalizedParticipant);
+      return;
+    }
+
+    const preferred = shouldPreferExamParticipant(normalizedParticipant, current)
+      ? normalizedParticipant
+      : current;
+
+    participantsById.set(normalizedId, {
+      ...preferred,
+      firebaseIds: [...new Set([
+        ...getExamParticipantFirebaseIds(current),
+        ...getExamParticipantFirebaseIds(normalizedParticipant)
+      ])]
+    });
+  });
+
+  return [...participantsById.values()];
+}
+
+function getAllExamParticipantFirebaseIds(participants) {
+  return [...new Set((participants || []).flatMap(getExamParticipantFirebaseIds))];
+}
+
 async function loadExamParticipants() {
   const snap = await getDocs(collection(db, EXAM_COLLECTION));
 
-  examParticipants = [];
+  const loadedParticipants = [];
 
   snap.forEach(docSnap => {
     const data = docSnap.data();
@@ -236,16 +333,22 @@ async function loadExamParticipants() {
 
     if (!normalizedId) return;
 
-    examParticipants.push({
+    loadedParticipants.push({
       firebaseId: docSnap.id,
       idUnique: data.idUnique || normalizedId,
       normalizedIdUnique: normalizedId,
       studentName: data.studentName || "Nom non renseigné",
       totalScore: Number(data.totalScore || 0),
       maxScore: Number(data.maxScore || 50),
-      status: data.status || "pending"
+      status: data.status || "pending",
+      scoreFieldCount: data.fieldScores && typeof data.fieldScores === "object"
+        ? Object.keys(data.fieldScores).length
+        : 0,
+      updatedAt: data.updatedAt || null
     });
   });
+
+  examParticipants = dedupeExamParticipants(loadedParticipants);
 
   examParticipants.sort((a, b) => {
     return String(a.studentName).localeCompare(String(b.studentName), "fr");
@@ -434,7 +537,7 @@ function getArchiveFilteredExamParticipants(archive) {
   const search = normalizeSearchText(currentArchiveSearch);
   const searchId = normalizeIdUnique(currentArchiveSearch);
 
-  return (archive.examParticipants || []).filter(participant => {
+  return dedupeExamParticipants(archive.examParticipants || []).filter(participant => {
     const normalizedId = participant.normalizedIdUnique || normalizeIdUnique(participant.idUnique);
     const companyId = participant.companyId || getArchiveStageCompanyIdForId(archive, normalizedId);
 
@@ -453,13 +556,14 @@ function getArchiveFilteredExamParticipants(archive) {
 }
 
 function buildArchiveSummary(stageItems, examItems) {
-  const approved = examItems.filter(item => item.status === "approved").length;
-  const rejected = examItems.filter(item => item.status === "rejected").length;
-  const pending = examItems.filter(item => item.status !== "approved" && item.status !== "rejected").length;
+  const uniqueExamItems = dedupeExamParticipants(examItems);
+  const approved = uniqueExamItems.filter(item => item.status === "approved").length;
+  const rejected = uniqueExamItems.filter(item => item.status === "rejected").length;
+  const pending = uniqueExamItems.filter(item => item.status !== "approved" && item.status !== "rejected").length;
 
   return {
     totalStages: stageItems.length,
-    totalExams: examItems.length,
+    totalExams: uniqueExamItems.length,
     approved,
     rejected,
     pending
@@ -1411,7 +1515,10 @@ function renderArchivesPanel() {
   }
 
   const cardsHtml = stageArchives.map(archive => {
-    const summary = archive.summary || {};
+    const summary = buildArchiveSummary(
+      archive.stageValidations || [],
+      archive.examParticipants || []
+    );
     const safeArchiveId = escapeJsString(archive.firebaseId);
 
     return `
@@ -1839,13 +1946,23 @@ window.deleteExamParticipantFromStage = async function(docId, studentName) {
   }
 
   try {
-    const ref = doc(db, EXAM_COLLECTION, docId);
+    const participant = examParticipants.find(item => {
+      return getExamParticipantFirebaseIds(item).includes(docId);
+    });
 
-    await setDoc(ref, {
-      archived: true,
-      archivedBy: auth.currentUser?.email || "professeur inconnu",
-      archivedAt: serverTimestamp()
-    }, { merge: true });
+    const firebaseIds = participant
+      ? getExamParticipantFirebaseIds(participant)
+      : [docId];
+
+    await Promise.all(firebaseIds.map(firebaseId => {
+      const ref = doc(db, EXAM_COLLECTION, firebaseId);
+
+      return setDoc(ref, {
+        archived: true,
+        archivedBy: auth.currentUser?.email || "professeur inconnu",
+        archivedAt: serverTimestamp()
+      }, { merge: true });
+    }));
 
     const row = document.querySelector(`[data-exam-row-id="${CSS.escape(docId)}"]`);
     if (row) row.remove();
@@ -1886,9 +2003,11 @@ window.deleteAllExamParticipantsFromStage = async function() {
   }
 
   try {
+    const firebaseIds = getAllExamParticipantFirebaseIds(examParticipants);
+
     await Promise.all(
-      examParticipants.map(participant => {
-        const ref = doc(db, EXAM_COLLECTION, participant.firebaseId);
+      firebaseIds.map(firebaseId => {
+        const ref = doc(db, EXAM_COLLECTION, firebaseId);
 
         return setDoc(ref, {
           archived: true,
@@ -1898,7 +2017,7 @@ window.deleteAllExamParticipantsFromStage = async function() {
       })
     );
 
-    console.log("Tous les participants examens ont été masqués :", examParticipants.length);
+    console.log("Tous les participants examens ont été masqués :", firebaseIds.length);
 
     await refreshAll();
   } catch (error) {
@@ -1989,8 +2108,8 @@ window.resetStageWeek = async function() {
       return deleteDoc(doc(db, STAGE_COLLECTION, item.firebaseId));
     });
 
-    const examArchives = examParticipants.map(participant => {
-      const ref = doc(db, EXAM_COLLECTION, participant.firebaseId);
+    const examArchives = getAllExamParticipantFirebaseIds(examParticipants).map(firebaseId => {
+      const ref = doc(db, EXAM_COLLECTION, firebaseId);
 
       return setDoc(ref, {
         archived: true,
