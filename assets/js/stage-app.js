@@ -476,7 +476,7 @@ function buildArchiveDocId(start, end) {
 
 function setDashboardCurrentTitle() {
   if (dashboardTitle) {
-    dashboardTitle.textContent = "Stagiaire Garage";
+    dashboardTitle.textContent = "Suivi de Stage";
   }
 
   if (dashboardIntro) {
@@ -486,7 +486,7 @@ function setDashboardCurrentTitle() {
 
 function setDashboardArchiveTitle(archive) {
   if (dashboardTitle) {
-    dashboardTitle.textContent = `Stagiaire Garage — ${getArchiveDisplayTitle(archive)}`;
+    dashboardTitle.textContent = `Suivi de Stage — ${getArchiveDisplayTitle(archive)}`;
   }
 
   if (dashboardIntro) {
