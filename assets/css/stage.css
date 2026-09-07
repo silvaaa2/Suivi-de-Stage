@@ -2290,6 +2290,68 @@ main {
   gap: 10px;
 }
 
+.archive-list-item { min-width: 0; }
+
+.archive-edit-dates-btn {
+  min-height: 40px;
+  padding: 9px 14px;
+  border: 1px solid rgba(214,180,106,.30);
+  border-radius: 12px;
+  background: rgba(214,180,106,.08);
+  color: var(--gold2);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.archive-list-item > .archive-edit-dates-btn { margin: 8px 0 4px; }
+.archive-edit-dates-btn:hover { background: rgba(214,180,106,.18); }
+.archive-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.archive-date-dialog {
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 26px;
+  border: 1px solid rgba(214,180,106,.30);
+  border-radius: 22px;
+  color: var(--text);
+  background: #141310;
+  box-shadow: 0 24px 80px rgba(0,0,0,.55);
+  color-scheme: dark;
+}
+
+.archive-date-dialog::backdrop { background: rgba(0,0,0,.72); }
+.archive-date-dialog h2 { margin: 8px 0 12px; font-size: 26px; }
+.archive-date-current { color: var(--muted); line-height: 1.5; }
+.archive-date-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 24px; }
+.archive-date-fields label { display: grid; gap: 9px; font-size: 14px; }
+.archive-date-fields input {
+  width: 100%;
+  min-width: 0;
+  height: 46px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #080808;
+  color: var(--text);
+  font: inherit;
+}
+.archive-date-fields input:focus-visible,
+.archive-edit-dates-btn:focus-visible { outline: 2px solid var(--gold2); outline-offset: 3px; }
+.archive-date-status { min-height: 22px; color: var(--red); font-size: 14px; line-height: 1.5; }
+.archive-date-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.archive-date-actions .main-btn { width: auto; min-width: 140px; margin: 0; padding: 12px 18px; }
+.archive-date-dialog :disabled { opacity: .55; cursor: wait; }
+
+@media (max-width: 480px) {
+  .archive-date-dialog { padding: 20px; }
+  .archive-date-fields { grid-template-columns: 1fr; }
+  .archive-date-actions > button { flex: 1; }
+  .archive-header-actions { width: 100%; }
+}
+
 .archive-card-btn {
   width: 100%;
   text-align: left;

@@ -1,4 +1,4 @@
-import "./effectif-sync.js?v=9080";
+import "./effectif-sync.js?v=9081";
 
 import { getApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
@@ -70,6 +70,8 @@ function getHistoryLabel(action) {
       return "Participants examens masqués";
     case "stage_week_reset":
       return "Semaine archivée";
+    case "stage_archive_dates_updated":
+      return "Dates de l’archive corrigées";
     case "stage_comment_saved":
       return "Commentaire stage modifié";
     case "admin_user_access_saved":

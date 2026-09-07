@@ -1,4 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { normalizeArchiveDateInput, buildArchivePeriod } from "./archive-period.mjs?v=1";
 
 import {
   getAuth,
@@ -14,6 +15,7 @@ import {
   doc,
   getDoc,
   setDoc,
+  runTransaction,
   deleteDoc,
   serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
@@ -82,6 +84,7 @@ let effectifRows = [];
 let stageArchives = [];
 
 let currentUserRole = null;
+let currentUserAdmin = false;
 let currentStageSearch = "";
 let currentEffectifSearch = "";
 let currentRightPanel = "examens";
@@ -169,6 +172,7 @@ function showDashboard() {
 }
 
 async function getUserRole(user) {
+  currentUserAdmin = false;
   if (!user?.email) return null;
 
   try {
@@ -177,6 +181,8 @@ async function getUserRole(user) {
 
     if (!userSnap.exists()) return null;
 
+    if (auth.currentUser?.uid !== user.uid) return null;
+    currentUserAdmin = userSnap.data().admin === true;
     return userSnap.data().role || null;
   } catch (error) {
     console.error("Erreur lecture rôle utilisateur :", error);
@@ -426,36 +432,6 @@ function renderCompanyFilterOptions() {
    ARCHIVES CURSUS
 ========================================================= */
 
-function normalizeArchiveDateInput(value) {
-  const raw = String(value || "").trim();
-
-  const slashMatch = raw.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if (slashMatch) {
-    const day = slashMatch[1].padStart(2, "0");
-    const month = slashMatch[2].padStart(2, "0");
-    const year = slashMatch[3];
-
-    return {
-      iso: `${year}-${month}-${day}`,
-      display: `${day}/${month}/${year}`
-    };
-  }
-
-  const isoMatch = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (isoMatch) {
-    const year = isoMatch[1];
-    const month = isoMatch[2].padStart(2, "0");
-    const day = isoMatch[3].padStart(2, "0");
-
-    return {
-      iso: `${year}-${month}-${day}`,
-      display: `${day}/${month}/${year}`
-    };
-  }
-
-  return null;
-}
-
 function formatArchiveDate(value) {
   const parsed = normalizeArchiveDateInput(value);
   if (parsed) return parsed.display;
@@ -509,6 +485,147 @@ async function loadStageArchives() {
   stageArchives.sort((a, b) => {
     return String(b.startDate || "").localeCompare(String(a.startDate || ""));
   });
+  if (currentArchive) {
+    currentArchive = stageArchives.find(item => item.firebaseId === currentArchive.firebaseId) || null;
+  }
+}
+
+async function saveStageArchivePeriod(archive, startValue, endValue) {
+  const user = auth.currentUser;
+  if (!user?.email || !currentUserAdmin) throw new Error("Seul le compte administrateur peut modifier les dates.");
+  const period = buildArchivePeriod(startValue, endValue);
+  const archiveRef = doc(db, STAGE_ARCHIVE_COLLECTION, archive.firebaseId);
+  const userRef = doc(db, "users", user.email);
+  const historyRef = doc(collection(db, "stageHistory"));
+
+  await runTransaction(db, async transaction => {
+    const userSnap = await transaction.get(userRef);
+    const archiveSnap = await transaction.get(archiveRef);
+    if (auth.currentUser?.uid !== user.uid || !userSnap.exists() || userSnap.data().admin !== true) {
+      throw new Error("Seul le compte administrateur peut modifier les dates.");
+    }
+    if (!archiveSnap.exists()) throw new Error("Cette archive n’existe plus. Actualisez la liste.");
+    const previous = archiveSnap.data();
+    if (previous.startDate !== archive.startDate || previous.endDate !== archive.endDate) {
+      throw new Error("Les dates ont déjà été modifiées. Actualisez puis rouvrez l’archive.");
+    }
+
+    // Keep the document ID and all archived results: other records reference this ID.
+    transaction.update(archiveRef, {
+      ...period,
+      datesUpdatedBy: user.email,
+      datesUpdatedAt: serverTimestamp()
+    });
+    transaction.set(historyRef, {
+      action: "stage_archive_dates_updated",
+      actor: user.email,
+      createdAt: serverTimestamp(),
+      details: {
+        archiveId: archive.firebaseId,
+        previousPeriod: getArchiveDisplayTitle(previous),
+        period: period.title
+      }
+    });
+  });
+  return period;
+}
+
+let archiveDateEditorArchive = null;
+let archiveDateSaving = false;
+let archiveDateOpener = null;
+
+function ensureArchiveDateEditor() {
+  let dialog = document.getElementById("archiveDateDialog");
+  if (dialog) return dialog;
+  dialog = document.createElement("dialog");
+  dialog.id = "archiveDateDialog";
+  dialog.className = "archive-date-dialog";
+  dialog.setAttribute("aria-labelledby", "archiveDateTitle");
+  dialog.innerHTML = `
+    <form id="archiveDateForm">
+      <p class="kicker">Archive · Administration</p>
+      <h2 id="archiveDateTitle">Modifier les dates</h2>
+      <p id="archiveDateCurrent" class="archive-date-current"></p>
+      <div class="archive-date-fields">
+        <label for="archiveStartDate">Date de début
+          <input id="archiveStartDate" type="date" min="1000-01-01" max="9999-12-31" required>
+        </label>
+        <label for="archiveEndDate">Date de fin
+          <input id="archiveEndDate" type="date" min="1000-01-01" max="9999-12-31" required>
+        </label>
+      </div>
+      <p id="archiveDateStatus" class="archive-date-status" role="status" aria-live="polite"></p>
+      <div class="archive-date-actions">
+        <button type="button" id="archiveDateCancel" class="header-btn">Annuler</button>
+        <button type="submit" id="archiveDateSave" class="main-btn">Enregistrer</button>
+      </div>
+    </form>`;
+  document.body.append(dialog);
+  dialog.querySelector("#archiveDateCancel").addEventListener("click", () => dialog.close());
+  dialog.addEventListener("cancel", event => {
+    if (archiveDateSaving) event.preventDefault();
+  });
+  dialog.addEventListener("close", () => {
+    archiveDateEditorArchive = null;
+    if (archiveDateOpener?.isConnected) archiveDateOpener.focus();
+    else examList.querySelector("[data-edit-archive-dates], .archive-card-btn")?.focus();
+  });
+  dialog.querySelector("#archiveDateForm").addEventListener("submit", async event => {
+    event.preventDefault();
+    if (archiveDateSaving || !archiveDateEditorArchive) return;
+    const archive = archiveDateEditorArchive;
+    const status = dialog.querySelector("#archiveDateStatus");
+    const saveButton = dialog.querySelector("#archiveDateSave");
+    const startValue = dialog.querySelector("#archiveStartDate").value;
+    const endValue = dialog.querySelector("#archiveEndDate").value;
+    archiveDateSaving = true;
+    dialog.querySelectorAll("input, button").forEach(element => { element.disabled = true; });
+    saveButton.textContent = "Enregistrement…";
+    status.textContent = "";
+    try {
+      const period = await saveStageArchivePeriod(archive, startValue, endValue);
+      const item = stageArchives.find(item => item.firebaseId === archive.firebaseId);
+      if (item) Object.assign(item, period);
+      stageArchives.sort((a, b) => String(b.startDate || "").localeCompare(String(a.startDate || "")));
+      if (currentArchive?.firebaseId === archive.firebaseId) {
+        Object.assign(currentArchive, period);
+        setDashboardArchiveTitle(currentArchive);
+      }
+      renderExamParticipants();
+      dialog.close();
+    } catch (error) {
+      status.textContent = error.code === "permission-denied"
+        ? "Accès refusé : la modification est réservée à l’administrateur."
+        : error.code === "unavailable"
+          ? "Connexion indisponible. Réessayez dès que le réseau est rétabli."
+          : error.message || "Enregistrement impossible. Réessayez.";
+    } finally {
+      archiveDateSaving = false;
+      dialog.querySelectorAll("input, button").forEach(element => { element.disabled = false; });
+      saveButton.textContent = "Enregistrer";
+    }
+  });
+  return dialog;
+}
+
+examList.addEventListener("click", event => {
+  const button = event.target.closest("[data-edit-archive-dates]");
+  if (!button || !currentUserAdmin || !auth.currentUser) return;
+  const archive = stageArchives.find(item => item.firebaseId === button.dataset.editArchiveDates);
+  if (!archive) return;
+  const dialog = ensureArchiveDateEditor();
+  archiveDateEditorArchive = { ...archive };
+  archiveDateOpener = button;
+  dialog.querySelector("#archiveDateCurrent").textContent = getArchiveDisplayTitle(archive);
+  dialog.querySelector("#archiveStartDate").value = normalizeArchiveDateInput(archive.startDate || archive.startDisplay)?.iso || "";
+  dialog.querySelector("#archiveEndDate").value = normalizeArchiveDateInput(archive.endDate || archive.endDisplay)?.iso || "";
+  dialog.querySelector("#archiveDateStatus").textContent = "";
+  dialog.showModal();
+});
+
+function renderArchiveDateButton(archive) {
+  if (!currentUserAdmin) return "";
+  return `<button type="button" class="archive-edit-dates-btn" data-edit-archive-dates="${escapeHtml(archive.firebaseId)}">Modifier les dates</button>`;
 }
 
 function getArchiveStageCompanyForId(archive, normalizedIdUnique) {
@@ -612,7 +729,12 @@ async function createStageArchive(start, end) {
     createdAt: serverTimestamp()
   };
 
-  await setDoc(doc(db, STAGE_ARCHIVE_COLLECTION, archiveId), archivePayload);
+  await runTransaction(db, async transaction => {
+    const archiveRef = doc(db, STAGE_ARCHIVE_COLLECTION, archiveId);
+    const existing = await transaction.get(archiveRef);
+    if (existing.exists()) throw new Error("Une archive existe déjà pour cet identifiant de cursus. Elle ne sera pas remplacée.");
+    transaction.set(archiveRef, archivePayload);
+  });
 
   return archiveId;
 }
@@ -1419,6 +1541,8 @@ function renderArchiveExamParticipants(content) {
         <h3>${escapeHtml(getArchiveDisplayTitle(currentArchive))}</h3>
       </div>
 
+      <div class="archive-header-actions">
+      ${renderArchiveDateButton(currentArchive)}
       <button
         type="button"
         class="archive-return-btn"
@@ -1426,6 +1550,7 @@ function renderArchiveExamParticipants(content) {
       >
         Retour cursus actuel
       </button>
+      </div>
     </div>
   `;
 
@@ -1522,6 +1647,7 @@ function renderArchivesPanel() {
     const safeArchiveId = escapeJsString(archive.firebaseId);
 
     return `
+      <div class="archive-list-item">
       <button
         type="button"
         class="archive-card-btn"
@@ -1535,6 +1661,8 @@ function renderArchivesPanel() {
           ✅ ${escapeHtml(summary.approved || 0)} approuvé(s) · ❌ ${escapeHtml(summary.rejected || 0)} refusé(s) · ⏳ ${escapeHtml(summary.pending || 0)} en attente
         </em>
       </button>
+      ${renderArchiveDateButton(archive)}
+      </div>
     `;
   }).join("");
 
@@ -2083,6 +2211,16 @@ window.resetStageWeek = async function() {
     return;
   }
 
+  if (endDate.iso < startDate.iso) {
+    alert("La date de fin doit être égale ou postérieure à la date de début.");
+    return;
+  }
+
+  if (stageArchives.some(archive => archive.startDate === startDate.iso && archive.endDate === endDate.iso)) {
+    alert("Une archive porte déjà ces dates. Choisissez une autre période.");
+    return;
+  }
+
   const archiveId = buildArchiveDocId(startDate, endDate);
 
   const typed = prompt(
@@ -2212,6 +2350,8 @@ loginForm.addEventListener("submit", async event => {
 
 logoutBtn.addEventListener("click", async () => {
   currentUserRole = null;
+  currentUserAdmin = false;
+  document.getElementById("archiveDateDialog")?.close();
   await signOut(auth);
 });
 
@@ -2223,6 +2363,8 @@ refreshBtn.addEventListener("click", async () => {
 onAuthStateChanged(auth, async user => {
   if (!user) {
     currentUserRole = null;
+    currentUserAdmin = false;
+    document.getElementById("archiveDateDialog")?.close();
     showLogin();
     return;
   }

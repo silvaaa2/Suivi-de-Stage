@@ -1,4 +1,4 @@
-import "./stage-app.js?v=9073";
+import "./stage-app.js?v=9074";
 
 import { getApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
 import {
@@ -162,6 +162,8 @@ function getHistoryLabel(action) {
       return "Participants examens masqués";
     case "stage_week_reset":
       return "Semaine archivée";
+    case "stage_archive_dates_updated":
+      return "Dates de l’archive corrigées";
     case "stage_comment_saved":
       return "Commentaire stage modifié";
     default:
@@ -207,6 +209,8 @@ function getHistoryDetail(item) {
       return "Suppression globale côté examens";
     case "stage_week_reset":
       return details.period || "Archive créée puis semaine réinitialisée";
+    case "stage_archive_dates_updated":
+      return `${details.previousPeriod || "Ancienne période"} → ${details.period || "Nouvelle période"}`;
     case "stage_comment_saved":
       return [details.idUnique, details.companyName].filter(Boolean).join(" · ");
     default:
